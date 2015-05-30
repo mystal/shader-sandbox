@@ -1,0 +1,13 @@
+[package]
+name = "shader_sandbox"
+version = "0.1.0"
+authors = ["Gabriel Martinez <reitaka@gmail.com>"]
+
+[dependencies]
+#conrod = "*"
+gfx = "*"
+#inotify = "*"
+#notify = "*"
+piston = "*"
+piston_window = "*"
+pistoncore-sdl2_window = "*"
