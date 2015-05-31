@@ -30,6 +30,7 @@ use gfx::traits::*;
 use gfx_graphics::GlyphCache;
 use piston_window::*;
 use piston::event::*;
+use piston::input::*;
 use piston::window::{ AdvancedWindow, Window, WindowSettings };
 use sdl2_window::{ Sdl2Window, OpenGL };
 
@@ -55,6 +56,7 @@ const TIMER: WidgetId = 1;
 
 struct UiData {
     fps: usize,
+    play: bool,
 }
 
 fn main() {
@@ -123,6 +125,7 @@ fn main() {
 
     let mut ui_data = UiData {
         fps: 0,
+        play: true,
     };
 
     let mut fps_counter = FPSCounter::new();
@@ -137,9 +140,22 @@ fn main() {
     //};
 
     for e in events {
-        // TODO: Handle input events.
+        if let Some(button) = e.press_args() {
+            match button {
+                Button::Keyboard(key) => {
+                    match key {
+                        keyboard::Key::Space => ui_data.play = !ui_data.play,
+                        _ => (),
+                    }
+                },
+                Button::Mouse(button) => {
+                },
+            }
+        }
         if let Some(args) = e.update_args() {
-            params.global_time += args.dt as f32;
+            if ui_data.play {
+                params.global_time += args.dt as f32;
+            }
         }
         if let Some(_) = e.render_args() {
             let size = e.size();
