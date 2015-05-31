@@ -57,6 +57,8 @@ const TIMER: WidgetId = 1;
 struct UiData {
     fps: usize,
     play: bool,
+    mouse_button_held: bool,
+    mouse_position: [f64; 2],
 }
 
 fn main() {
@@ -126,6 +128,8 @@ fn main() {
     let mut ui_data = UiData {
         fps: 0,
         play: true,
+        mouse_button_held: false,
+        mouse_position: [0.0, 0.0],
     };
 
     let mut fps_counter = FPSCounter::new();
@@ -149,9 +153,33 @@ fn main() {
                     }
                 },
                 Button::Mouse(button) => {
+                    match button {
+                        mouse::MouseButton::Left => ui_data.mouse_button_held = true,
+                        _ => (),
+                    }
                 },
             }
         }
+        if let Some(button) = e.release_args() {
+            match button {
+                Button::Keyboard(key) => {
+                },
+                Button::Mouse(button) => {
+                    match button {
+                        mouse::MouseButton::Left => ui_data.mouse_button_held = false,
+                        _ => (),
+                    }
+                },
+            }
+        }
+        if let Some(mouse_position) = e.mouse_cursor_args() {
+            ui_data.mouse_position = mouse_position;
+        }
+        if ui_data.mouse_button_held {
+            params.mouse_state[0] = ui_data.mouse_position[0] as f32;
+            params.mouse_state[1] = ui_data.mouse_position[1] as f32;
+        }
+
         if let Some(args) = e.update_args() {
             if ui_data.play {
                 params.global_time += args.dt as f32;
