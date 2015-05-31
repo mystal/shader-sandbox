@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["Gabriel Martinez <reitaka@gmail.com>"]
 
 [dependencies]
-#conrod = "*"
+conrod = "*"
+fps_counter = "*"
 gfx = "*"
 #inotify = "*"
 #notify = "*"
