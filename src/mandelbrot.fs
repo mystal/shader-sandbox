@@ -1,4 +1,5 @@
 uniform vec2 screenSize;
+uniform int iterations;
 
 bool mandelbrotConverges(vec2 z) {
   return length(z) < 2.0;
@@ -9,20 +10,20 @@ vec2 mandelbrotIter(vec2 z, vec2 c) {
 }
 
 bool mandelbrot(vec2 c) {
-  //Test if the point c is inside the mandelbrot set after 100 iterations
+  // Test if the point c is in the mandelbrot set after iterations.
   vec2 z = vec2(0.0);
-  vec2 zrun = z;
-  for (int i = 0; i < 100; i++) {
-    zrun = mandelbrotIter(zrun, c);
+  for (int i = 0; i < iterations; i++) {
+    z = mandelbrotIter(z, c);
   }
 
-  return mandelbrotConverges(zrun);
+  return mandelbrotConverges(z);
 }
 
 void main() {
-    // TODO: gl_FragCoord is in pixel coordinates. Map to relative coordinates.
-    vec2 coord = gl_FragCoord.xy / screenSize;
-    if (mandelbrot(coord)) {
+    vec2 c = 2.0 * (gl_FragCoord.xy / screenSize) - vec2(1.0, 1.0);
+    c.x *= screenSize.x / screenSize.y;
+    c.x -= 0.5;
+    if (mandelbrot(c)) {
         gl_FragColor = vec4(1.0);
     } else {
         gl_FragColor = vec4(0.0);
