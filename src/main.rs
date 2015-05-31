@@ -30,14 +30,20 @@ use gfx::traits::*;
 use gfx_graphics::GlyphCache;
 use piston_window::*;
 use piston::event::*;
-use piston::window::{ AdvancedWindow, WindowSettings };
+use piston::window::{ AdvancedWindow, Window, WindowSettings };
 use sdl2_window::{ Sdl2Window, OpenGL };
 
 const SCREEN_SIZE: [u32; 2] = [640, 480];
 
-gfx_parameters!( ShaderParams {
+gfx_parameters!( MandelbrotShaderParams {
     screenSize@ screen_size: [f32; 2],
     iterations@ iterations: i32,
+});
+
+gfx_parameters!( ShadertoyShaderParams {
+    iGlobalTime@ global_time: f32,
+    iResolution@ resolution: [f32; 3],
+    iMouse@ mouse_state: [f32; 4],
 });
 
 gfx_vertex!( Vertex {
@@ -45,6 +51,7 @@ gfx_vertex!( Vertex {
 });
 
 const FPS: WidgetId = 0;
+const TIMER: WidgetId = 1;
 
 struct UiData {
     fps: usize,
@@ -66,7 +73,18 @@ fn main() {
     let mut fragment_source = String::new();
 
     File::open("src/simple.vs").unwrap().read_to_string(&mut vertex_source);
-    File::open("src/mandelbrot.fs").unwrap().read_to_string(&mut fragment_source);
+    File::open("src/companion_cube.fs").unwrap().read_to_string(&mut fragment_source);
+
+    let fragment_source = format!(
+        "uniform float iGlobalTime;
+        uniform vec3 iResolution;
+        uniform vec4 iMouse;
+
+        {}
+
+        void main() {{
+            mainImage(gl_FragColor, gl_FragCoord.xy);
+        }}", fragment_source);
 
     let program = {
         let vertex = gfx::ShaderSource {
@@ -90,11 +108,18 @@ fn main() {
     let slice = mesh.to_slice(gfx::PrimitiveType::TriangleFan);
 
     let state = gfx::DrawState::new();
-    let params = ShaderParams {
-        screen_size: [SCREEN_SIZE[0] as f32, SCREEN_SIZE[1] as f32],
-        iterations: 1000,
+    let mut params = ShadertoyShaderParams {
+        global_time: 0.0,
+        resolution: [0.0, 0.0, 0.0],
+        mouse_state: [0.0, 0.0, 0.0, 0.0],
         _r: PhantomData,
     };
+
+    //let params = MandelbrotShaderParams {
+    //    screen_size: [SCREEN_SIZE[0] as f32, SCREEN_SIZE[1] as f32],
+    //    iterations: 1000,
+    //    _r: PhantomData,
+    //};
 
     let mut ui_data = UiData {
         fps: 0,
@@ -112,7 +137,14 @@ fn main() {
     //};
 
     for e in events {
+        // TODO: Handle input events.
+        if let Some(args) = e.update_args() {
+            params.global_time += args.dt as f32;
+        }
         if let Some(_) = e.render_args() {
+            let size = e.size();
+            params.resolution[0] = size.width as f32;
+            params.resolution[1] = size.height as f32;
             e.draw_3d(|stream| {
                 stream.clear(
                     gfx::ClearData {
@@ -130,6 +162,12 @@ fn main() {
                     .font_size(32)
                     .color(white())
                     .set(FPS, &mut ui);
+                ui.draw(context, g);
+                Label::new(&format!("{}", params.global_time as i32))
+                    .xy(-180.0, 180.0)
+                    .font_size(32)
+                    .color(white())
+                    .set(TIMER, &mut ui);
                 ui.draw(context, g);
             });
         }
