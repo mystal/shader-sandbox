@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Gabriel Martinez <reitaka@gmail.com>"]
 
 [dependencies]
+clap = "*"
 conrod = "*"
 fps_counter = "*"
 gfx = "*"

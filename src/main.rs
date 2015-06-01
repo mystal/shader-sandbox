@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate conrod;
 extern crate fps_counter;
 #[macro_use]
@@ -15,6 +16,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::rc::Rc;
 
+use clap::App;
 use conrod::{
     Colorable,
     Label,
@@ -62,6 +64,13 @@ struct UiData {
 }
 
 fn main() {
+    let args =
+        App::new("shader_sandbox")
+                 .args_from_usage(
+                     "-s --shadertoy 'Treat provided shader as Shadertoy would.'
+                     <shader_file> 'The shader to run.'")
+                 .get_matches();
+
     let window = Rc::new(RefCell::new(Sdl2Window::new(
         OpenGL::_3_2,
         WindowSettings::new("Shader Sandbox", SCREEN_SIZE)
@@ -73,11 +82,14 @@ fn main() {
 
     let ref mut factory = events.factory.borrow().clone();
 
+    let vertex_file = "src/simple.vs";
+    let fragment_file = args.value_of("shader_file").unwrap();
+
     let mut vertex_source = String::new();
     let mut fragment_source = String::new();
 
-    File::open("src/simple.vs").unwrap().read_to_string(&mut vertex_source);
-    File::open("src/companion_cube.fs").unwrap().read_to_string(&mut fragment_source);
+    File::open(vertex_file).unwrap().read_to_string(&mut vertex_source);
+    File::open(fragment_file).unwrap().read_to_string(&mut fragment_source);
 
     let fragment_source = format!(
         "uniform float iGlobalTime;
