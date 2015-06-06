@@ -1,4 +1,4 @@
-uniform vec2 screenSize;
+uniform vec3 iResolution;
 uniform int iterations;
 
 bool mandelbrotConverges(vec2 z) {
@@ -20,8 +20,8 @@ bool mandelbrot(vec2 c) {
 }
 
 void main() {
-    vec2 c = 2.0 * (gl_FragCoord.xy / screenSize) - vec2(1.0, 1.0);
-    c.x *= screenSize.x / screenSize.y;
+    vec2 c = 2.0 * (gl_FragCoord.xy / iResolution.xy) - vec2(1.0, 1.0);
+    c.x *= iResolution.x / iResolution.y;
     c.x -= 0.5;
     if (mandelbrot(c)) {
         gl_FragColor = vec4(1.0);

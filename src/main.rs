@@ -10,6 +10,7 @@ extern crate piston_window;
 extern crate sdl2_window;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::marker::PhantomData;
@@ -28,6 +29,10 @@ use conrod::{
 };
 use conrod::color::white;
 use fps_counter::FPSCounter;
+use gfx::{ ParamStorage, UniformValue };
+use gfx::device::Resources;
+use gfx::device::shade::ProgramInfo;
+use gfx::shade::{ ParameterError, ParameterId, ShaderParam };
 use gfx::traits::*;
 use gfx_graphics::GlyphCache;
 use piston_window::*;
@@ -38,16 +43,46 @@ use sdl2_window::{ Sdl2Window, OpenGL };
 
 const SCREEN_SIZE: [u32; 2] = [640, 480];
 
-gfx_parameters!( MandelbrotShaderParams {
-    screenSize@ screen_size: [f32; 2],
-    iterations@ iterations: i32,
-});
+struct GenericShaderParams<R: Resources> {
+    // TODO: Replace UniformValue with your own data structure/trait.
+    uniforms: HashMap<String, UniformValue>,
+    _r: PhantomData<R>,
+}
 
-gfx_parameters!( ShadertoyShaderParams {
-    iGlobalTime@ global_time: f32,
-    iResolution@ resolution: [f32; 3],
-    iMouse@ mouse_state: [f32; 4],
-});
+impl<R: Resources> GenericShaderParams<R> {
+    fn new(program_info: &ProgramInfo) -> GenericShaderParams<R> {
+        let mut uniforms = HashMap::new();
+        // TODO: If uniform matches a builtin name, but not tye type, panic!
+        for uniform in &program_info.uniforms {
+            uniforms.insert(uniform.name.clone(), uniform.clone().into());
+        }
+        GenericShaderParams {
+            uniforms: uniforms,
+            _r: PhantomData,
+        }
+    }
+}
+
+impl<R: Resources> ShaderParam for GenericShaderParams<R> {
+    type Resources = R;
+    type Link = Vec<(String, ParameterId)>;
+
+    fn create_link(_: Option<&Self>, program_info: &ProgramInfo)
+        -> Result<Self::Link, ParameterError> {
+        let mut link = Vec::with_capacity(program_info.uniforms.len());
+        for (id, uniform) in program_info.uniforms.iter().enumerate() {
+            link.push((uniform.name.clone(), id as ParameterId));
+        }
+        Ok(link)
+    }
+
+    fn fill_params(&self, link: &Self::Link, storage: &mut ParamStorage<R>) {
+        use gfx::shade::Parameter;
+        for &(ref name, id) in link {
+            self.uniforms[name].put(id, storage);
+        }
+    }
+}
 
 gfx_vertex!( Vertex {
     a_Pos@ pos: [f32; 2],
@@ -57,6 +92,7 @@ const FPS: WidgetId = 0;
 const TIMER: WidgetId = 1;
 
 struct UiData {
+    global_time: f32,
     fps: usize,
     play: bool,
     mouse_button_held: bool,
@@ -77,9 +113,7 @@ fn main() {
         .exit_on_esc(true)
         .samples(4)
     )));
-
     let events = PistonWindow::new(window, empty_app());
-
     let ref mut factory = events.factory.borrow().clone();
 
     let vertex_file = "src/simple.vs";
@@ -91,16 +125,18 @@ fn main() {
     File::open(vertex_file).unwrap().read_to_string(&mut vertex_source);
     File::open(fragment_file).unwrap().read_to_string(&mut fragment_source);
 
-    let fragment_source = format!(
-        "uniform float iGlobalTime;
-        uniform vec3 iResolution;
-        uniform vec4 iMouse;
+    if args.is_present("shadertoy") {
+        fragment_source = format!(
+            "uniform float iGlobalTime;
+            uniform vec3 iResolution;
+            uniform vec4 iMouse;
 
-        {}
+            {}
 
-        void main() {{
-            mainImage(gl_FragColor, gl_FragCoord.xy);
-        }}", fragment_source);
+            void main() {{
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }}", fragment_source);
+    }
 
     let program = {
         let vertex = gfx::ShaderSource {
@@ -124,20 +160,17 @@ fn main() {
     let slice = mesh.to_slice(gfx::PrimitiveType::TriangleFan);
 
     let state = gfx::DrawState::new();
-    let mut params = ShadertoyShaderParams {
-        global_time: 0.0,
-        resolution: [0.0, 0.0, 0.0],
-        mouse_state: [0.0, 0.0, 0.0, 0.0],
-        _r: PhantomData,
-    };
 
-    //let params = MandelbrotShaderParams {
-    //    screen_size: [SCREEN_SIZE[0] as f32, SCREEN_SIZE[1] as f32],
-    //    iterations: 1000,
-    //    _r: PhantomData,
-    //};
+    let mut params = GenericShaderParams::new(program.get_info());
+    params.uniforms.insert("iResolution".to_string(), UniformValue::F32Vector3(
+        [SCREEN_SIZE[0] as f32, SCREEN_SIZE[1] as f32, 0.0]));
+    params.uniforms.insert("iGlobalTime".to_string(), UniformValue::F32(0.0));
+    params.uniforms.insert("iMouse".to_string(), UniformValue::F32Vector4(
+        [0.0, 0.0, 0.0, 0.0]));
+    params.uniforms.insert("iterations".to_string(), UniformValue::I32(100));
 
     let mut ui_data = UiData {
+        global_time: 0.0,
         fps: 0,
         play: true,
         mouse_button_held: false,
@@ -188,19 +221,21 @@ fn main() {
             ui_data.mouse_position = mouse_position;
         }
         if ui_data.mouse_button_held {
-            params.mouse_state[0] = ui_data.mouse_position[0] as f32;
-            params.mouse_state[1] = ui_data.mouse_position[1] as f32;
+            params.uniforms.insert("iMouse".to_string(), UniformValue::F32Vector4(
+                [ui_data.mouse_position[0] as f32, ui_data.mouse_position[1] as f32, 0.0, 0.0]));
         }
 
         if let Some(args) = e.update_args() {
             if ui_data.play {
-                params.global_time += args.dt as f32;
+                ui_data.global_time += args.dt as f32;
+                params.uniforms.insert("iGlobalTime".to_string(), UniformValue::F32(
+                    ui_data.global_time));
             }
         }
         if let Some(_) = e.render_args() {
             let size = e.size();
-            params.resolution[0] = size.width as f32;
-            params.resolution[1] = size.height as f32;
+            params.uniforms.insert("iResolution".to_string(), UniformValue::F32Vector3(
+                [size.width as f32, size.height as f32, 0.0]));
             e.draw_3d(|stream| {
                 stream.clear(
                     gfx::ClearData {
@@ -219,7 +254,7 @@ fn main() {
                     .color(white())
                     .set(FPS, &mut ui);
                 ui.draw(context, g);
-                Label::new(&format!("{}", params.global_time as i32))
+                Label::new(&format!("{}", ui_data.global_time as i32))
                     .xy(-180.0, 180.0)
                     .font_size(32)
                     .color(white())
