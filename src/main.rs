@@ -5,17 +5,14 @@ extern crate fps_counter;
 extern crate gfx;
 extern crate gfx_graphics;
 extern crate graphics;
-extern crate piston;
 extern crate piston_window;
 extern crate sdl2_window;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::marker::PhantomData;
 use std::path::Path;
-use std::rc::Rc;
 
 use clap::App;
 use conrod::{
@@ -36,10 +33,7 @@ use gfx::shade::{ ParameterError, ParameterId, ShaderParam };
 use gfx::traits::*;
 use gfx_graphics::GlyphCache;
 use piston_window::*;
-use piston::event::*;
-use piston::input::*;
-use piston::window::{ AdvancedWindow, Window, WindowSettings };
-use sdl2_window::{ Sdl2Window, OpenGL };
+use sdl2_window::Sdl2Window;
 
 const SCREEN_SIZE: [u32; 2] = [640, 480];
 
@@ -107,14 +101,11 @@ fn main() {
                      <shader_file> 'The shader to run.'")
                  .get_matches();
 
-    let window = Rc::new(RefCell::new(Sdl2Window::new(
-        OpenGL::_3_2,
-        WindowSettings::new("Shader Sandbox", SCREEN_SIZE)
+    let window: PistonWindow<Sdl2Window> = WindowSettings::new("Shader Sandbox", SCREEN_SIZE)
         .exit_on_esc(true)
         .samples(4)
-    )));
-    let events = PistonWindow::new(window, empty_app());
-    let ref mut factory = events.factory.borrow().clone();
+        .into();
+    let ref mut factory = window.factory.borrow().clone();
 
     let vertex_file = "src/simple.vs";
     let fragment_file = args.value_of("shader_file").unwrap();
@@ -188,7 +179,7 @@ fn main() {
     //let draw_ui = |c, g, ui: &mut Ui<GlyphCache<_, _>>, ui_data| {
     //};
 
-    for e in events {
+    for e in window {
         if let Some(button) = e.press_args() {
             match button {
                 Button::Keyboard(key) => {
