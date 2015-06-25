@@ -1,10 +1,9 @@
+extern crate chrono;
 extern crate clap;
 extern crate conrod;
 extern crate fps_counter;
 #[macro_use]
 extern crate gfx;
-extern crate gfx_graphics;
-extern crate graphics;
 extern crate piston_window;
 extern crate sdl2_window;
 
@@ -14,6 +13,7 @@ use std::io::Read;
 use std::marker::PhantomData;
 use std::path::Path;
 
+use chrono::*;
 use clap::App;
 use conrod::{
     Colorable,
@@ -31,7 +31,6 @@ use gfx::device::Resources;
 use gfx::device::shade::ProgramInfo;
 use gfx::shade::{ ParameterError, ParameterId, ShaderParam };
 use gfx::traits::*;
-use gfx_graphics::GlyphCache;
 use piston_window::*;
 use sdl2_window::Sdl2Window;
 
@@ -91,6 +90,7 @@ struct UiData {
     play: bool,
     mouse_button_held: bool,
     mouse_position: [f64; 2],
+    date: DateTime<Local>,
 }
 
 fn main() {
@@ -121,6 +121,7 @@ fn main() {
             "uniform float iGlobalTime;
             uniform vec3 iResolution;
             uniform vec4 iMouse;
+            uniform vec4 iDate;
 
             {}
 
@@ -158,6 +159,8 @@ fn main() {
     params.uniforms.insert("iGlobalTime".to_string(), UniformValue::F32(0.0));
     params.uniforms.insert("iMouse".to_string(), UniformValue::F32Vector4(
         [0.0, 0.0, 0.0, 0.0]));
+    params.uniforms.insert("iDate".to_string(), UniformValue::F32Vector4(
+        [0.0, 0.0, 0.0, 0.0]));
     params.uniforms.insert("iterations".to_string(), UniformValue::I32(100));
 
     let mut ui_data = UiData {
@@ -166,18 +169,24 @@ fn main() {
         play: true,
         mouse_button_held: false,
         mouse_position: [0.0, 0.0],
+        date: Local::now(),
     };
 
     let mut fps_counter = FPSCounter::new();
 
     let glyph_cache = {
         let font_path = Path::new("assets/VeraMono.ttf");
-        GlyphCache::new(&font_path, factory.clone()).unwrap()
+        Glyphs::new(&font_path, factory.clone()).unwrap()
     };
     let mut ui  = Ui::new(glyph_cache, Theme::default());
 
     //let draw_ui = |c, g, ui: &mut Ui<GlyphCache<_, _>>, ui_data| {
     //};
+    println!("Year: {}\nMonth: {}\nDay: {}\nSecond: {}",
+             ui_data.date.year() as f32,
+             ui_data.date.month() as f32,
+             ui_data.date.day() as f32,
+             ui_data.date.num_seconds_from_midnight() as f32);
 
     for e in window {
         if let Some(button) = e.press_args() {
@@ -219,8 +228,17 @@ fn main() {
         if let Some(args) = e.update_args() {
             if ui_data.play {
                 ui_data.global_time += args.dt as f32;
+                ui_data.date = Local::now();
                 params.uniforms.insert("iGlobalTime".to_string(), UniformValue::F32(
                     ui_data.global_time));
+                params.uniforms.insert(
+                    "iDate".to_string(),
+                    UniformValue::F32Vector4([
+                        ui_data.date.year() as f32,
+                        ui_data.date.month0() as f32,
+                        ui_data.date.day0() as f32,
+                        ui_data.date.num_seconds_from_midnight() as f32,
+                    ]));
             }
         }
         if let Some(_) = e.render_args() {

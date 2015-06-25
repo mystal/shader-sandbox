@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Gabriel Martinez <reitaka@gmail.com>"]
 
 [dependencies]
+chrono = "*"
 clap = "*"
 conrod = "*"
 fps_counter = "*"
@@ -12,6 +13,4 @@ gfx = "*"
 #notify = "*"
 piston = "*"
 piston_window = "*"
-piston2d-gfx_graphics = "*"
-piston2d-graphics = "*"
 pistoncore-sdl2_window = "*"
