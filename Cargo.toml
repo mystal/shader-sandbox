@@ -1,5 +1,5 @@
 [package]
-name = "shader_sandbox"
+name = "shader-sandbox"
 version = "0.1.0"
 authors = ["Gabriel Martinez <reitaka@gmail.com>"]
 
@@ -9,6 +9,6 @@ clap = "^2.23.3"
 conrod = "^0.51.1"
 fps_counter = "^0.2.0"
 glium = { version = "^0.14.0", features = [], default-features = false }
-midgar = { path = "../../games/midgar-engine/midgar" }
+midgar = { git = "https://github.com/mystal/midgar-engine" }
 notify = "^4.0.1"
 same-file = "^0.1.3"
