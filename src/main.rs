@@ -5,12 +5,16 @@ extern crate fps_counter;
 #[macro_use]
 extern crate glium;
 extern crate midgar;
+extern crate notify;
+extern crate same_file;
 
 use std::collections::HashMap;
 use std::default::Default;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::mpsc::{channel, Receiver};
+use std::time::Duration;
 
 use chrono::*;
 //use conrod::{
@@ -25,8 +29,11 @@ use chrono::*;
 //use conrod::color::white;
 use fps_counter::FPSCounter;
 use glium::Program;
+use glium::backend::Facade;
 use glium::uniforms::{AsUniformValue, Uniforms, UniformValue};
 use midgar::{KeyCode, Midgar, Mouse, Surface};
+use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
+use same_file::is_same_file;
 
 const SCREEN_SIZE: (u32, u32) = (640, 480);
 
@@ -157,7 +164,62 @@ struct UiData {
     date: DateTime<Local>,
 }
 
+// TODO: Return a Result to report errors compiling the shader.
+fn compile_shader<F>(display: &F, vs_path: &str, fs_path: &str, shadertoy: bool) -> Program
+    where F: Facade {
+    let mut vertex_source = String::new();
+    let mut fragment_source = String::new();
+
+    File::open(vs_path).expect("Could not open vertex shader file")
+        .read_to_string(&mut vertex_source);
+    File::open(fs_path).expect("Could not open vertex shader file")
+        .read_to_string(&mut fragment_source);
+
+    if shadertoy {
+        fragment_source = format!(
+            "#version 150 core
+
+            out vec4 color;
+
+            uniform float iGlobalTime;
+            uniform vec3 iResolution;
+            uniform vec4 iMouse;
+            uniform vec4 iDate;
+
+            {}
+
+            void main() {{
+                mainImage(color, gl_FragCoord.xy);
+            }}", fragment_source);
+        // TODO: Use ShadertoyUniformValues instead of UniformValues
+    }
+
+    // NOTE: By default, assume shaders output sRGB colors.
+    let program_creation_input = glium::program::ProgramCreationInput::SourceCode {
+        vertex_shader: &vertex_source,
+        fragment_shader: &fragment_source,
+        geometry_shader: None,
+        tessellation_control_shader: None,
+        tessellation_evaluation_shader: None,
+        transform_feedback_varyings: None,
+        outputs_srgb: true,
+        uses_point_size: false,
+    };
+    glium::Program::new(display, program_creation_input)
+        .expect("Could not compile or link shader program")
+    //glium::Program::from_source(
+    //    midgar.graphics().display(),
+    //    &vertex_source,
+    //    &fragment_source,
+    //    None,
+    //).expect("Could not compile or link shader program")
+}
+
 struct App {
+    vs_path: String,
+    fs_path: String,
+    watcher: RecommendedWatcher,
+    notify_rx: Receiver<DebouncedEvent>,
     program: glium::Program,
     // TODO: Make this Uniforms
     uniform_values: ShadertoyUniformValues,
@@ -181,53 +243,18 @@ impl midgar::App for App {
         let fragment_file = args.value_of("shader_file")
             .expect("Did not get a shader_file");
 
-        let mut vertex_source = String::new();
-        let mut fragment_source = String::new();
+        let program = compile_shader(midgar.graphics().display(), vertex_file, fragment_file, /*args.is_present("shadertoy")*/ true);
 
-        File::open(vertex_file).expect("Could not open vertex shader file")
-            .read_to_string(&mut vertex_source);
-        File::open(fragment_file).expect("Could not open vertex shader file")
-            .read_to_string(&mut fragment_source);
-
-        if /*args.is_present("shadertoy")*/ true {
-            fragment_source = format!(
-                "#version 150 core
-
-                out vec4 color;
-
-                uniform float iGlobalTime;
-                uniform vec3 iResolution;
-                uniform vec4 iMouse;
-                uniform vec4 iDate;
-
-                {}
-
-                void main() {{
-                    mainImage(color, gl_FragCoord.xy);
-                }}", fragment_source);
-            // TODO: Use ShadertoyUniformValues instead of UniformValues
-        }
-
-        // NOTE: By default, assume shaders output sRGB colors.
-        let program_creation_input = glium::program::ProgramCreationInput::SourceCode {
-            vertex_shader: &vertex_source,
-            fragment_shader: &fragment_source,
-            geometry_shader: None,
-            tessellation_control_shader: None,
-            tessellation_evaluation_shader: None,
-            transform_feedback_varyings: None,
-            outputs_srgb: true,
-            uses_point_size: false,
-        };
-        let program = glium::Program::new(midgar.graphics().display(), program_creation_input)
-            .expect("Could not compile or link shader program");
-        //let program = glium::Program::from_source(
-        //    midgar.graphics().display(),
-        //    &vertex_source,
-        //    &fragment_source,
-        //    None,
-        //).expect("Could not compile or link shader program");
         let mut uniform_values = ShadertoyUniformValues::new();
+
+        // TODO: Start watching fragment file for changes.
+        let (notify_tx, notify_rx) = channel();
+        let mut watcher = notify::watcher(notify_tx, Duration::from_secs(2))
+            .expect("Could not create file watcher");
+        watcher.watch(vertex_file, RecursiveMode::NonRecursive)
+            .expect("Could not watch vertex shader");
+        watcher.watch(fragment_file, RecursiveMode::NonRecursive)
+            .expect("Could not watch fragment shader");
 
         let vertex_data = [
             Vertex { vertex: [-1.0, -1.0] },
@@ -262,6 +289,10 @@ impl midgar::App for App {
                  ui_data.date.num_seconds_from_midnight() as f32);
 
         App {
+            vs_path: vertex_file.into(),
+            fs_path: fragment_file.into(),
+            watcher: watcher,
+            notify_rx: notify_rx,
             program: program,
             uniform_values: uniform_values,
             vertex_buffer: vertex_buffer,
@@ -295,7 +326,38 @@ impl midgar::App for App {
             self.uniform_values.mouse[1] = y as f32;
         }
 
-        if !self.ui_data.play {
+        // Check if shaders changed, if so, recompile them.
+        let recompile_shaders = {
+            let mut ret = false;
+            while let Ok(event) = self.notify_rx.try_recv() {
+                //println!("Got file event: {:?}", &event);
+                match event {
+                    DebouncedEvent::NoticeWrite(path) | DebouncedEvent::Write(path) |DebouncedEvent::Create(path) => {
+                        if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
+                            ret = true;
+                        }
+                    },
+                    DebouncedEvent::Remove(ref path) => {
+                        if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
+                            println!("In-use shader \"{}\" removed! Exiting...", path.display());
+                            midgar.set_should_exit();
+                            return;
+                        }
+                    },
+                    _ => {},
+                }
+            }
+            ret
+        };
+
+        if recompile_shaders {
+            // TODO: Any way to recompile shaders in the background?
+            print!("Recompiling shaders... ");
+            self.program = compile_shader(midgar.graphics().display(), &self.vs_path, &self.fs_path, /*args.is_present("shadertoy")*/ true);
+            println!("Done!");
+        }
+
+        if !self.ui_data.play && !recompile_shaders {
             return;
         }
 

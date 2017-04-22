@@ -10,4 +10,5 @@ conrod = "^0.51.1"
 fps_counter = "^0.2.0"
 glium = { version = "^0.14.0", features = [], default-features = false }
 midgar = { path = "../../games/midgar-engine/midgar" }
-#notify = "^4.0.1"
+notify = "^4.0.1"
+same-file = "^0.1.3"
