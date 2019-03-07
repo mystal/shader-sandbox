@@ -5,10 +5,10 @@ authors = ["Gabriel Martinez <reitaka@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-chrono = "^0.3.0"
-clap = "^2.23.3"
-fps_counter = "^0.2.0"
+chrono = "0.4"
+clap = "2"
+fps_counter = "1"
 glium = { version = "0.23", features = [], default-features = false }
 midgar = { git = "https://github.com/mystal/midgar-engine", branch = "dev" }
-notify = "^4.0.1"
-same-file = "^0.1.3"
+notify = "4"
+same-file = "0.1"
