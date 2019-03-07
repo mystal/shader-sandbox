@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
 use std::path::Path;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
 use chrono::*;
@@ -81,19 +81,29 @@ glium::implement_vertex!(Vertex, vertex);
 //    }
 //}
 
-// TODO: Implement ShadertoyUniformValues
 struct ShadertoyUniformValues {
-    resolution: [f32; 3], // (vec3) iResolution, image, The viewport resolution (z is pixel aspect ratio, usually 1.0)
-    global_time: f32, // (float) iGlobalTime, image/sound, Current time in seconds
-    time_delta: f32, // (float) iTimeDelta, image, Time it takes to render a frame, in seconds
-    frame: i32, // (int) iFrame, image, Current frame
-    frame_rate: f32, // (float) iFrameRate, image, Number of frames rendered per second
-    //channel_time: [f32; 4], // (float) iChannelTime[4], image, Time for channel (if video or sound), in seconds
-    //channel_resolution: [[f32;3]; 4], // (vec3) iChannelResolution[4], image/sound, Input texture resolution for each channel
-    mouse: [f32; 4], // (vec4) iMouse, image, xy = current pixel coords (if LMB is down). zw = click pixel
-    //channel: Sampler2D, // (sampler2D), iChannel{i}, image/sound, Sampler for input textures i
-    date: [f32; 4], // (vec4) iDate, image/sound, Year, month, day, time in seconds in .xyzw
-    //sample_rate: f32, // (float) iSampleRate, image/sound, The sound sample rate (typically 44100)
+    // (vec3) iResolution, image, The viewport resolution (z is pixel aspect ratio, usually 1.0)
+    resolution: [f32; 3],
+    // (float) iGlobalTime, image/sound, Current time in seconds
+    global_time: f32,
+    // (float) iTimeDelta, image, Time it takes to render a frame, in seconds
+    time_delta: f32,
+    // (int) iFrame, image, Current frame
+    frame: i32,
+    // (float) iFrameRate, image, Number of frames rendered per second
+    frame_rate: f32,
+    // (float) iChannelTime[4], image, Time for channel (if video or sound), in seconds
+    //channel_time: [f32; 4],
+    // (vec3) iChannelResolution[4], image/sound, Input texture resolution for each channel
+    //channel_resolution: [[f32;3]; 4],
+    // (vec4) iMouse, image, xy = current pixel coords (if LMB is down). zw = click pixel
+    mouse: [f32; 4],
+    // (sampler2D), iChannel{i}, image/sound, Sampler for input textures i
+    //channel: Sampler2D,
+    // (vec4) iDate, image/sound, Year, month, day, time in seconds in .xyzw
+    date: [f32; 4],
+    // (float) iSampleRate, image/sound, The sound sample rate (typically 44100)
+    //sample_rate: f32,
 }
 
 impl ShadertoyUniformValues {
@@ -210,19 +220,17 @@ impl midgar::App for App {
                 <shader_file> 'The shader to run.'")
             .get_matches();
 
-        // TODO: Use notify to watch for changes in the shaders.
-
         let vertex_file = "src/shaders/simple.vs.glsl";
         let fragment_file = args.value_of("shader_file")
             .expect("Did not get a shader_file");
 
-        let program = compile_shader(midgar.graphics().display(), vertex_file, fragment_file, /*args.is_present("shadertoy")*/ true);
+        let program = compile_shader(midgar.graphics().display(), vertex_file, fragment_file, args.is_present("shadertoy"));
 
         let mut uniform_values = ShadertoyUniformValues::new();
 
-        // TODO: Start watching fragment file for changes.
-        let (notify_tx, notify_rx) = channel();
-        let mut watcher = notify::watcher(notify_tx, Duration::from_secs(2))
+        // Use notify to watch for changes in the shaders.
+        let (notify_tx, notify_rx) = mpsc::channel();
+        let mut watcher = notify::watcher(notify_tx, Duration::from_millis(500))
             .expect("Could not create file watcher");
         watcher.watch(vertex_file, RecursiveMode::NonRecursive)
             .expect("Could not watch vertex shader");
@@ -266,13 +274,13 @@ impl midgar::App for App {
         App {
             vs_path: vertex_file.into(),
             fs_path: fragment_file.into(),
-            watcher: watcher,
-            notify_rx: notify_rx,
-            program: program,
-            uniform_values: uniform_values,
-            vertex_buffer: vertex_buffer,
-            index_buffer: index_buffer,
-            ui_data: ui_data,
+            watcher,
+            notify_rx,
+            program,
+            uniform_values,
+            vertex_buffer,
+            index_buffer,
+            ui_data,
             fps_counter: FPSCounter::new(),
         }
     }
@@ -305,14 +313,14 @@ impl midgar::App for App {
         let recompile_shaders = {
             let mut ret = false;
             while let Ok(event) = self.notify_rx.try_recv() {
-                //println!("Got file event: {:?}", &event);
+                println!("Got file event: {:?}", &event);
                 match event {
-                    DebouncedEvent::NoticeWrite(path) | DebouncedEvent::Write(path) |DebouncedEvent::Create(path) => {
+                    DebouncedEvent::NoticeWrite(path) | DebouncedEvent::Write(path) | DebouncedEvent::Create(path) => {
                         if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
                             ret = true;
                         }
                     },
-                    DebouncedEvent::Remove(ref path) => {
+                    DebouncedEvent::Remove(path) => {
                         if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
                             println!("In-use shader \"{}\" removed! Exiting...", path.display());
                             midgar.set_should_exit();
@@ -367,20 +375,10 @@ impl midgar::App for App {
                 &Default::default(),
             ).expect("Could not draw to screen");
 
-            // TODO: Draw the UI.
             self.ui_data.fps = self.uniform_values.frame_rate;
-            //Label::new(&format!("{}", ui_data.fps))
-            //    .xy(180.0, 180.0)
-            //    .font_size(32)
-            //    .color(white())
-            //    .set(FPS, &mut ui);
-            //ui.draw(context, g);
-            //Label::new(&format!("{}", ui_data.global_time as i32))
-            //    .xy(-180.0, 180.0)
-            //    .font_size(32)
-            //    .color(white())
-            //    .set(TIMER, &mut ui);
-            //ui.draw(context, g);
+
+            // TODO: Draw UI.
+
             target.finish().expect("target.finish() failed");
         }
     }
