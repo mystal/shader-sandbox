@@ -10,7 +10,7 @@ use fps_counter::FPSCounter;
 use glium::Program;
 use glium::backend::Facade;
 use glium::uniforms::{AsUniformValue, Uniforms, UniformValue};
-use midgar::{KeyCode, Midgar, Mouse, Surface};
+use midgar::{KeyCode, Midgar, MouseButton, Surface};
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use same_file::is_same_file;
 
@@ -203,7 +203,7 @@ struct App {
 }
 
 impl midgar::App for App {
-    fn create(midgar: &Midgar) -> Self {
+    fn new(midgar: &Midgar) -> Self {
         let args = clap::App::new("shader_sandbox")
             .args_from_usage(
                 "-s --shadertoy 'Treat provided shader as Shadertoy would.'
@@ -244,7 +244,9 @@ impl midgar::App for App {
         let index_buffer = glium::IndexBuffer::new(midgar.graphics().display(), glium::index::PrimitiveType::TrianglesList, &indices)
             .expect("Could not create index buffer");
 
-        uniform_values.resolution = [SCREEN_SIZE.0 as f32, SCREEN_SIZE.1 as f32, 1.0];
+        let screen_size = midgar.graphics().screen_size();
+        uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
+        uniform_values.iterations = 50;
 
         let ui_data = UiData {
             global_time: 0.0,
@@ -276,25 +278,25 @@ impl midgar::App for App {
     }
 
     fn step(&mut self, midgar: &mut Midgar) {
-        if midgar.input().was_key_pressed(&KeyCode::Escape) {
+        if midgar.input().was_key_pressed(KeyCode::Escape) {
             midgar.set_should_exit();
             return;
         }
 
-        if midgar.input().was_key_pressed(&KeyCode::Space) {
+        if midgar.input().was_key_pressed(KeyCode::Space) {
             self.ui_data.play = !self.ui_data.play;
         }
 
-        self.ui_data.mouse_button_held = midgar.input().is_button_held(&Mouse::Left);
+        self.ui_data.mouse_button_held = midgar.input().is_button_held(MouseButton::Left);
 
         let (x, y) = midgar.input().mouse_pos();
 
-        if midgar.input().was_button_pressed(&Mouse::Left) {
+        if midgar.input().was_button_pressed(MouseButton::Left) {
             self.uniform_values.mouse[2] = x as f32;
             self.uniform_values.mouse[3] = y as f32;
         }
 
-        if midgar.input().is_button_held(&Mouse::Left) {
+        if midgar.input().is_button_held(MouseButton::Left) {
             self.uniform_values.mouse[0] = x as f32;
             self.uniform_values.mouse[1] = y as f32;
         }
@@ -334,6 +336,8 @@ impl midgar::App for App {
             return;
         }
 
+        let screen_size = midgar.graphics().screen_size();
+        self.uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
         self.uniform_values.time_delta = midgar.time().delta_time() as f32;
         //self.ui_data.global_time += self.uniform_values.time_delta;
         self.uniform_values.global_time += self.uniform_values.time_delta;
@@ -346,7 +350,6 @@ impl midgar::App for App {
             self.ui_data.date.day0() as f32,
             self.ui_data.date.num_seconds_from_midnight() as f32,
         ];
-        // TODO: Update resolution.
 
         // Render everything!
         {
@@ -386,7 +389,8 @@ impl midgar::App for App {
 fn main() {
     let config = midgar::MidgarAppConfig::new()
         .with_title("Shader Sandbox")
-        .with_screen_size(SCREEN_SIZE);
+        .with_screen_size(SCREEN_SIZE)
+        .with_resizable(true);
     let app: midgar::MidgarApp<App> = midgar::MidgarApp::new(config);
     app.run();
 }
