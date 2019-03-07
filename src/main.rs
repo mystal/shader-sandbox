@@ -1,16 +1,6 @@
-extern crate chrono;
-extern crate clap;
-extern crate fps_counter;
-#[macro_use]
-extern crate glium;
-extern crate midgar;
-extern crate notify;
-extern crate same_file;
-
 use std::collections::HashMap;
 use std::default::Default;
-use std::fs::File;
-use std::io::Read;
+use std::fs;
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
@@ -30,7 +20,7 @@ const SCREEN_SIZE: (u32, u32) = (640, 480);
 struct Vertex {
     vertex: [f32; 2],
 }
-implement_vertex!(Vertex, vertex);
+glium::implement_vertex!(Vertex, vertex);
 
 //struct UniformValues {
 //    uniforms: HashMap<String, Box<AsUniformValue>>,
@@ -141,9 +131,6 @@ impl Uniforms for ShadertoyUniformValues {
     }
 }
 
-//const FPS: WidgetId = 0;
-//const TIMER: WidgetId = 1;
-
 struct UiData {
     global_time: f32,
     fps: f32,
@@ -156,13 +143,10 @@ struct UiData {
 // TODO: Return a Result to report errors compiling the shader.
 fn compile_shader<F>(display: &F, vs_path: &str, fs_path: &str, shadertoy: bool) -> Program
     where F: Facade {
-    let mut vertex_source = String::new();
-    let mut fragment_source = String::new();
-
-    File::open(vs_path).expect("Could not open vertex shader file")
-        .read_to_string(&mut vertex_source);
-    File::open(fs_path).expect("Could not open vertex shader file")
-        .read_to_string(&mut fragment_source);
+    let vertex_source = fs::read_to_string(vs_path)
+        .expect("Could not open vertex shader file");
+    let mut fragment_source = fs::read_to_string(fs_path)
+        .expect("Could not open vertex shader file");
 
     if shadertoy {
         fragment_source = format!(
@@ -262,7 +246,7 @@ impl midgar::App for App {
 
         uniform_values.resolution = [SCREEN_SIZE.0 as f32, SCREEN_SIZE.1 as f32, 1.0];
 
-        let mut ui_data = UiData {
+        let ui_data = UiData {
             global_time: 0.0,
             fps: 0.0,
             play: true,
