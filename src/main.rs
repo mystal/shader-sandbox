@@ -1,6 +1,5 @@
 extern crate chrono;
 extern crate clap;
-//extern crate conrod;
 extern crate fps_counter;
 #[macro_use]
 extern crate glium;
@@ -17,16 +16,6 @@ use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
 
 use chrono::*;
-//use conrod::{
-//    Colorable,
-//    Label,
-//    Positionable,
-//    Theme,
-//    Ui,
-//    Widget,
-//    WidgetId,
-//};
-//use conrod::color::white;
 use fps_counter::FPSCounter;
 use glium::Program;
 use glium::backend::Facade;
