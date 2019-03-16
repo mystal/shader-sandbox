@@ -22,70 +22,73 @@ struct Vertex {
 }
 glium::implement_vertex!(Vertex, vertex);
 
-//struct UniformValues {
-//    uniforms: HashMap<String, Box<AsUniformValue>>,
-//}
-//
-//impl UniformValues {
-//    fn new(program: &Program) -> Self {
-//        let mut uniforms = HashMap::new();
-//        for (name, uniform) in program.uniforms() {
-//            // Check uniform type and get a default value for it.
-//            let value = match uniform.ty {
-//                Float => 0.0f32,
-//                FloatVec2 => (0.0f32, 0.0),
-//                FloatVec3 => (0.0f32, 0.0, 0.0),
-//                FloatVec4 => (0.0f32, 0.0, 0.0, 0.0),
-//                Double => 0.0f64,
-//                DoubleVec2 => (0.0f64, 0.0),
-//                DoubleVec3 => (0.0f64, 0.0, 0.0),
-//                DoubleVec4 => (0.0f64, 0.0, 0.0, 0.0),
-//                Int => 0i32,
-//                IntVec2 => (0i32, 0),
-//                IntVec3 => (0i32, 0, 0),
-//                IntVec4 => (0i32, 0, 0, 0),
-//                UnsignedInt => 0u32,
-//                UnsignedIntVec2 => (0u32, 0),
-//                UnsignedIntVec3 => (0u32, 0, 0),
-//                UnsignedIntVec4 => (0u32, 0, 0, 0),
-//                Int64 => 0i64,
-//                Int64Vec2 => (0i64, 0),
-//                Int64Vec3 => (0i64, 0, 0),
-//                Int64Vec4 => (0i64, 0, 0, 0),
-//                UnsignedInt64 => 0u64,
-//                UnsignedInt64Vec2 => (0u64, 0),
-//                UnsignedInt64Vec3 => (0u64, 0, 0),
-//                UnsignedInt64Vec4 => (0u64, 0, 0, 0),
-//                Bool => false,
-//                BoolVec2 => (false, false),
-//                BoolVec3 => (false, false, false),
-//                BoolVec4 => (false, false, false, false),
-//
-//                // TODO: Return a result instead of panicking.
-//                ty => panic!("Uniforms of type {:?} are unimplemented!", ty),
-//            };
-//            uniforms.insert(name.clone(), value);
-//        }
-//        UniformValues {
-//            uniforms: uniforms,
-//        }
-//    }
-//}
-//
-//impl Uniforms for UniformValues {
-//    fn visit_values<'a, F>(&'a self, mut output: F)
-//        where F: FnMut(&str, UniformValue<'a>) {
-//        for (name, value) in &self.uniforms {
-//            output(name, value.as_uniform_value());
-//        }
-//    }
-//}
+// TODO: Consider making an enum for the uniform values.
+struct UniformValues {
+    uniforms: HashMap<String, Box<dyn AsUniformValue>>,
+}
+
+impl UniformValues {
+    fn new(program: &Program) -> Self {
+        let mut uniforms = HashMap::new();
+        for (name, uniform) in program.uniforms() {
+            use glium::uniforms::UniformType::*;
+
+            // Check uniform type and set a default value for it.
+            let value: Box<dyn AsUniformValue> = match uniform.ty {
+                Float => Box::new(0.0f32),
+                FloatVec2 => Box::new([0.0f32; 2]),
+                FloatVec3 => Box::new([0.0f32; 3]),
+                FloatVec4 => Box::new([0.0f32; 4]),
+                Double => Box::new(0.0f64),
+                DoubleVec2 => Box::new([0.0f64; 2]),
+                DoubleVec3 => Box::new([0.0f64; 3]),
+                DoubleVec4 => Box::new([0.0f64; 4]),
+                Int => Box::new(0i32),
+                IntVec2 => Box::new([0i32; 2]),
+                IntVec3 => Box::new([0i32; 3]),
+                IntVec4 => Box::new([0i32; 4]),
+                UnsignedInt => Box::new(0u32),
+                UnsignedIntVec2 => Box::new([0u32; 2]),
+                UnsignedIntVec3 => Box::new([0u32; 3]),
+                UnsignedIntVec4 => Box::new([0u32; 4]),
+                Int64 => Box::new(0i64),
+                Int64Vec2 => Box::new([0i64; 2]),
+                Int64Vec3 => Box::new([0i64; 3]),
+                Int64Vec4 => Box::new([0i64; 4]),
+                UnsignedInt64 => Box::new(0u64),
+                UnsignedInt64Vec2 => Box::new([0u64; 2]),
+                UnsignedInt64Vec3 => Box::new([0u64; 3]),
+                UnsignedInt64Vec4 => Box::new([0u64; 4]),
+                Bool => Box::new(false),
+                BoolVec2 => Box::new([false; 2]),
+                BoolVec3 => Box::new([false; 3]),
+                BoolVec4 => Box::new([false; 4]),
+
+                // TODO: Return a result instead of panicking.
+                ty => panic!("Uniforms of type {:?} are unimplemented!", ty),
+            };
+            uniforms.insert(name.clone(), value);
+        }
+        UniformValues {
+            uniforms: uniforms,
+        }
+    }
+}
+
+impl Uniforms for UniformValues {
+    fn visit_values<'uniform, F>(&'uniform self, mut output: F)
+        where F: FnMut(&str, UniformValue<'uniform>) {
+        for (name, value) in &self.uniforms {
+            output(name, value.as_uniform_value());
+        }
+    }
+}
 
 struct ShadertoyUniformValues {
     // (vec3) iResolution, image, The viewport resolution (z is pixel aspect ratio, usually 1.0)
     resolution: [f32; 3],
-    // (float) iGlobalTime, image/sound, Current time in seconds
-    global_time: f32,
+    // (float) iTime, image/sound, Current time in seconds
+    time: f32,
     // (float) iTimeDelta, image, Time it takes to render a frame, in seconds
     time_delta: f32,
     // (int) iFrame, image, Current frame
@@ -110,7 +113,7 @@ impl ShadertoyUniformValues {
     fn new() -> Self {
         ShadertoyUniformValues {
             resolution: Default::default(),
-            global_time: 0.0,
+            time: 0.0,
             time_delta: 0.0,
             frame: 0,
             frame_rate: 0.0,
@@ -125,10 +128,12 @@ impl ShadertoyUniformValues {
 }
 
 impl Uniforms for ShadertoyUniformValues {
-    fn visit_values<'a, F>(&'a self, mut output: F)
-        where F: FnMut(&str, UniformValue<'a>) {
+    fn visit_values<'uniform, F>(&'uniform self, mut output: F)
+        where F: FnMut(&str, UniformValue<'uniform>) {
             output("iResolution", self.resolution.as_uniform_value());
-            output("iGlobalTime", self.global_time.as_uniform_value());
+            output("iTime", self.time.as_uniform_value());
+            // The deprecated name of time.
+            output("iGlobalTime", self.time.as_uniform_value());
             output("iTimeDelta", self.time_delta.as_uniform_value());
             output("iFrame", self.frame.as_uniform_value());
             output("iFrameRate", self.frame_rate.as_uniform_value());
@@ -164,7 +169,7 @@ fn compile_shader<F>(display: &F, vs_path: &str, fs_path: &str, shadertoy: bool)
 
             out vec4 color;
 
-            uniform float iGlobalTime;
+            uniform float iTime;
             uniform vec3 iResolution;
             uniform vec4 iMouse;
             uniform vec4 iDate;
@@ -188,8 +193,10 @@ fn compile_shader<F>(display: &F, vs_path: &str, fs_path: &str, shadertoy: bool)
         outputs_srgb: true,
         uses_point_size: false,
     };
-    glium::Program::new(display, program_creation_input)
-        .expect("Could not compile or link shader program")
+    match glium::Program::new(display, program_creation_input) {
+        Ok(program) => return program,
+        Err(e) => panic!(format!("Error: Could not create shader program:\n{}", e)),
+    }
     //glium::Program::from_source(
     //    midgar.graphics().display(),
     //    &vertex_source,
@@ -254,7 +261,6 @@ impl midgar::App for App {
 
         let screen_size = midgar.graphics().screen_size();
         uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
-        uniform_values.iterations = 50;
 
         let ui_data = UiData {
             global_time: 0.0,
@@ -265,11 +271,11 @@ impl midgar::App for App {
             date: Local::now(),
         };
 
-        println!("Year: {}\nMonth: {}\nDay: {}\nSecond: {}",
-                 ui_data.date.year() as f32,
-                 ui_data.date.month() as f32,
-                 ui_data.date.day() as f32,
-                 ui_data.date.num_seconds_from_midnight() as f32);
+        eprintln!("Year: {}\nMonth: {}\nDay: {}\nSecond: {}",
+                  ui_data.date.year() as f32,
+                  ui_data.date.month() as f32,
+                  ui_data.date.day() as f32,
+                  ui_data.date.num_seconds_from_midnight() as f32);
 
         App {
             vs_path: vertex_file.into(),
@@ -348,7 +354,7 @@ impl midgar::App for App {
         self.uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
         self.uniform_values.time_delta = midgar.time().delta_time() as f32;
         //self.ui_data.global_time += self.uniform_values.time_delta;
-        self.uniform_values.global_time += self.uniform_values.time_delta;
+        self.uniform_values.time += self.uniform_values.time_delta;
         self.uniform_values.frame += 1;
         self.uniform_values.frame_rate = self.fps_counter.tick() as f32;
         self.ui_data.date = Local::now();
