@@ -1,6 +1,7 @@
 +++
 resolution = "resolution"
-iterations = { widget = "slider", min = 1 }
+iterations = 50
+#iterations = { widget = "slider", min = 1 }
 +++
 
 uniform vec2 resolution;

@@ -9,10 +9,11 @@ use chrono::*;
 use fps_counter::FPSCounter;
 use glium::Program;
 use glium::backend::Facade;
-use glium::uniforms::{AsUniformValue, Uniforms, UniformValue};
+use glium::uniforms::{AsUniformValue, Uniforms, UniformType, UniformValue};
 use midgar::{KeyCode, Midgar, MouseButton, Surface};
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use same_file::is_same_file;
+use toml::Value as TomlValue;
 
 const SCREEN_SIZE: (u32, u32) = (640, 480);
 
@@ -22,16 +23,32 @@ struct Vertex {
 }
 glium::implement_vertex!(Vertex, vertex);
 
+struct UniformHolder {
+    value: Box<dyn AsUniformValue>,
+    ty: UniformType,
+    resolution: bool,
+}
+
+impl UniformHolder {
+    fn new(value: Box<dyn AsUniformValue>, ty: UniformType) -> Self {
+        Self {
+            value,
+            ty,
+            resolution: false,
+        }
+    }
+}
+
 // TODO: Consider making an enum for the uniform values.
 struct FreeformUniforms {
-    uniforms: HashMap<String, Box<dyn AsUniformValue>>,
+    uniforms: HashMap<String, UniformHolder>,
 }
 
 impl FreeformUniforms {
     fn new(program: &Program) -> Self {
         let mut uniforms = HashMap::new();
         for (name, uniform) in program.uniforms() {
-            use glium::uniforms::UniformType::*;
+            use UniformType::*;
 
             // Check uniform type and set a default value for it.
             let value: Box<dyn AsUniformValue> = match uniform.ty {
@@ -68,7 +85,7 @@ impl FreeformUniforms {
                 ty => panic!("Uniforms of type {:?} are unimplemented!", ty),
             };
             eprintln!("{}: {:?}", name, uniform.ty);
-            uniforms.insert(name.clone(), value);
+            uniforms.insert(name.clone(), UniformHolder::new(value, uniform.ty));
         }
         Self {
             uniforms,
@@ -79,12 +96,13 @@ impl FreeformUniforms {
 impl Uniforms for FreeformUniforms {
     fn visit_values<'uniform, F>(&'uniform self, mut output: F)
         where F: FnMut(&str, UniformValue<'uniform>) {
-        for (name, value) in &self.uniforms {
-            output(name, value.as_uniform_value());
+        for (name, holder) in &self.uniforms {
+            output(name, holder.value.as_uniform_value());
         }
     }
 }
 
+#[derive(Debug)]
 struct ShadertoyUniforms {
     // (vec3) iResolution, image, The viewport resolution (z is pixel aspect ratio, usually 1.0)
     resolution: [f32; 3],
@@ -213,7 +231,7 @@ struct App {
 
 impl midgar::App for App {
     fn new(midgar: &Midgar) -> Self {
-        let args = clap::App::new("shader_sandbox")
+        let args = clap::App::new("Shade Storm")
             .args_from_usage(
                 "-s --shadertoy 'Treat provided shader as Shadertoy would.'
                 <shader_file> 'The shader to run.'")
@@ -224,11 +242,11 @@ impl midgar::App for App {
             .expect("Did not get a shader_file");
         let vs_src = fs::read_to_string(vs_path)
             .expect("Could not open vertex shader file");
-        let mut fs_src = fs::read_to_string(fs_path)
+        let fs_src = fs::read_to_string(fs_path)
             .expect("Could not open vertex shader file");
 
         let (program, uniform_values) = if args.is_present("shadertoy") {
-            fs_src = format!(
+            let fs_src = format!(
                 "#version 150 core
 
                 out vec4 color;
@@ -248,12 +266,47 @@ impl midgar::App for App {
             let program = compile_shader(midgar.graphics().display(), &vs_src, &fs_src);
 
             let screen_size = midgar.graphics().screen_size();
-            let mut uniform_values = ShadertoyUniforms::new();
-            uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
+            let uniform_values = ShadertoyUniforms::new();
             (program, UniformValues::Shadertoy(uniform_values))
         } else {
+            let mut split_fs_src = fs_src.split("+++\n");
+            // Value before the TOML block.
+            split_fs_src.next();
+
+            let toml_src = split_fs_src.next()
+                .expect("Did not find TOML block");
+            let parsed_toml: TomlValue = toml_src.parse()
+                .expect("Could not parse TOML block");
+            eprintln!("Parsed TOML:\n{:#?}", parsed_toml);
+
+            let fs_src = split_fs_src.next()
+                .expect("Did not find GLSL fragment shader source after TOML block");
             let program = compile_shader(midgar.graphics().display(), &vs_src, &fs_src);
-            let uniform_values = FreeformUniforms::new(&program);
+            let mut uniform_values = FreeformUniforms::new(&program);
+
+            if let TomlValue::Table(table) = parsed_toml {
+                for (key, value) in &table {
+                    if let Some(uniform) = uniform_values.uniforms.get_mut(key) {
+                        // TODO: Do stuff!
+                        match value {
+                            TomlValue::String(s) if s == "resolution" => {
+                                if uniform.ty == UniformType::FloatVec2 {
+                                    uniform.resolution = true;
+                                }
+                            }
+                            TomlValue::Integer(i) => {
+                                if uniform.ty == UniformType::Int {
+                                }
+                            }
+                            //TomlValue::Float(f) => {}
+                            //TomlValue::Boolean(b) => {}
+                            //TomlValue::Array(arr) => {}
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
             (program, UniformValues::Freeform(uniform_values))
         };
 
@@ -394,7 +447,7 @@ impl midgar::App for App {
         {
             let mut target = midgar.graphics().display().draw();
 
-            // TODO: Do we need to clear the screen?
+            // TODO: Allow the shader to set what to clear the screen to.
             target.clear_color(0.0, 0.0, 0.0, 1.0);
 
             // Run the shader.
@@ -420,7 +473,7 @@ impl midgar::App for App {
 
 fn main() {
     let config = midgar::MidgarAppConfig::new()
-        .with_title("Shader Sandbox")
+        .with_title("Shade Storm")
         .with_screen_size(SCREEN_SIZE)
         .with_resizable(true);
     let app: midgar::MidgarApp<App> = midgar::MidgarApp::new(config);

@@ -1,5 +1,5 @@
 [package]
-name = "shader-sandbox"
+name = "shade-storm"
 version = "0.1.0"
 authors = ["Gabriel Martinez <reitaka@gmail.com>"]
 edition = "2018"
@@ -12,3 +12,4 @@ glium = { version = "0.23", features = [], default-features = false }
 midgar = { git = "https://github.com/mystal/midgar-engine", branch = "dev" }
 notify = "4"
 same-file = "0.1"
+toml = "0.5"
