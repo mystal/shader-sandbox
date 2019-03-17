@@ -11,5 +11,4 @@ fps_counter = "1"
 glium = { version = "0.23", features = [], default-features = false }
 midgar = { git = "https://github.com/mystal/midgar-engine", branch = "dev" }
 notify = "4"
-same-file = "0.1"
 toml = "0.5"

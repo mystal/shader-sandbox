@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
@@ -12,7 +12,6 @@ use glium::backend::Facade;
 use glium::uniforms::{AsUniformValue, Uniforms, UniformType, UniformValue};
 use midgar::{KeyCode, Midgar, MouseButton, Surface};
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
-use same_file::is_same_file;
 use toml::Value as TomlValue;
 
 const SCREEN_SIZE: (u32, u32) = (640, 480);
@@ -285,9 +284,84 @@ fn compile_shader<F>(display: &F, vs_src: &str, fs_src: &str) -> Program
     //).expect("Could not compile or link shader program")
 }
 
+fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) -> (Program, UniformValues)
+    where F: Facade, P: AsRef<Path> {
+    let vs_src = fs::read_to_string(&vs_path)
+        .expect("Could not open vertex shader file");
+    let fs_src = fs::read_to_string(&fs_path)
+        .expect("Could not open vertex shader file");
+
+    if shadertoy {
+        let fs_src = format!(
+            "#version 150 core
+
+            out vec4 color;
+
+            uniform float iTime;
+            uniform float iGlobalTime;
+            uniform vec3 iResolution;
+            uniform vec4 iMouse;
+            uniform vec4 iDate;
+
+            {}
+
+            void main() {{
+                mainImage(color, gl_FragCoord.xy);
+            }}", fs_src);
+
+        let program = compile_shader(display, &vs_src, &fs_src);
+
+        let uniform_values = ShadertoyUniforms::new();
+        (program, UniformValues::Shadertoy(uniform_values))
+    } else {
+        let mut split_fs_src = fs_src.split("+++\n");
+        // Value before the TOML block.
+        split_fs_src.next();
+
+        let toml_src = split_fs_src.next()
+            .expect("Did not find TOML block");
+        let parsed_toml: TomlValue = toml_src.parse()
+            .expect("Could not parse TOML block");
+        eprintln!("Parsed TOML:\n{:#?}", parsed_toml);
+
+        let fs_src = split_fs_src.next()
+            .expect("Did not find GLSL fragment shader source after TOML block");
+        let program = compile_shader(display, &vs_src, &fs_src);
+        let mut uniform_values = FreeformUniforms::new(&program);
+
+        if let TomlValue::Table(table) = parsed_toml {
+            for (key, value) in &table {
+                if let Some(uniform) = uniform_values.uniforms.get_mut(key) {
+                    // TODO: Do stuff!
+                    match value {
+                        TomlValue::String(s) if s == "resolution" => {
+                            if let StormUniform::FloatVec2(_) = uniform.value {
+                                uniform.value = StormUniform::Resolution([0.0; 2]);
+                            }
+                        }
+                        TomlValue::Integer(toml_int) => {
+                            if let StormUniform::Int(uniform_int) = &mut uniform.value {
+                                *uniform_int = *toml_int as i32;
+                            }
+                        }
+                        //TomlValue::Float(f) => {}
+                        //TomlValue::Boolean(b) => {}
+                        //TomlValue::Array(arr) => {}
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        eprintln!("Uniforms:\n{:?}", uniform_values);
+
+        (program, UniformValues::Freeform(uniform_values))
+    }
+}
+
 struct App {
-    vs_path: String,
-    fs_path: String,
+    vs_path: PathBuf,
+    fs_path: PathBuf,
     watcher: RecommendedWatcher,
     notify_rx: Receiver<DebouncedEvent>,
     program: glium::Program,
@@ -307,90 +381,25 @@ impl midgar::App for App {
                 <shader_file> 'The shader to run.'")
             .get_matches();
 
-        let vs_path = "src/shaders/simple.vs.glsl";
-        let fs_path = args.value_of("shader_file")
-            .expect("Did not get a shader_file");
-        let vs_src = fs::read_to_string(vs_path)
-            .expect("Could not open vertex shader file");
-        let fs_src = fs::read_to_string(fs_path)
-            .expect("Could not open vertex shader file");
-
-        let (program, uniform_values) = if args.is_present("shadertoy") {
-            let fs_src = format!(
-                "#version 150 core
-
-                out vec4 color;
-
-                uniform float iTime;
-                uniform float iGlobalTime;
-                uniform vec3 iResolution;
-                uniform vec4 iMouse;
-                uniform vec4 iDate;
-
-                {}
-
-                void main() {{
-                    mainImage(color, gl_FragCoord.xy);
-                }}", fs_src);
-
-            let program = compile_shader(midgar.graphics().display(), &vs_src, &fs_src);
-
-            let screen_size = midgar.graphics().screen_size();
-            let uniform_values = ShadertoyUniforms::new();
-            (program, UniformValues::Shadertoy(uniform_values))
-        } else {
-            let mut split_fs_src = fs_src.split("+++\n");
-            // Value before the TOML block.
-            split_fs_src.next();
-
-            let toml_src = split_fs_src.next()
-                .expect("Did not find TOML block");
-            let parsed_toml: TomlValue = toml_src.parse()
-                .expect("Could not parse TOML block");
-            eprintln!("Parsed TOML:\n{:#?}", parsed_toml);
-
-            let fs_src = split_fs_src.next()
-                .expect("Did not find GLSL fragment shader source after TOML block");
-            let program = compile_shader(midgar.graphics().display(), &vs_src, &fs_src);
-            let mut uniform_values = FreeformUniforms::new(&program);
-
-            if let TomlValue::Table(table) = parsed_toml {
-                for (key, value) in &table {
-                    if let Some(uniform) = uniform_values.uniforms.get_mut(key) {
-                        // TODO: Do stuff!
-                        match value {
-                            TomlValue::String(s) if s == "resolution" => {
-                                if let StormUniform::FloatVec2(_) = uniform.value {
-                                    uniform.value = StormUniform::Resolution([0.0; 2]);
-                                }
-                            }
-                            TomlValue::Integer(toml_int) => {
-                                if let StormUniform::Int(uniform_int) = &mut uniform.value {
-                                    *uniform_int = *toml_int as i32;
-                                }
-                            }
-                            //TomlValue::Float(f) => {}
-                            //TomlValue::Boolean(b) => {}
-                            //TomlValue::Array(arr) => {}
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            eprintln!("Uniforms:\n{:?}", uniform_values);
-
-            (program, UniformValues::Freeform(uniform_values))
-        };
-
+        let vs_path = fs::canonicalize("src/shaders/simple.vs.glsl")
+            .expect("Could not canonicalize vertex shader path");
+        let fs_path = fs::canonicalize(args.value_of("shader_file")
+            .expect("Did not get a shader_file"))
+            .expect("Could not canonicalize fragment shader path");
+        let (program, uniform_values) = create_program(midgar.graphics().display(), &vs_path, &fs_path, args.is_present("shadertoy"));
 
         // Use notify to watch for changes in the shaders.
         let (notify_tx, notify_rx) = mpsc::channel();
         let mut watcher = notify::watcher(notify_tx, Duration::from_millis(500))
             .expect("Could not create file watcher");
-        watcher.watch(vs_path, RecursiveMode::NonRecursive)
+        // NOTE: Watching the parent directory since watching a single file doesn't seem to work...
+        let vs_watch_path = vs_path.parent()
             .expect("Could not watch vertex shader");
-        watcher.watch(fs_path, RecursiveMode::NonRecursive)
+        watcher.watch(vs_watch_path, RecursiveMode::Recursive)
+            .expect("Could not watch vertex shader");
+        let fs_watch_path = fs_path.parent()
+            .expect("Could not watch fragment shader");
+        watcher.watch(fs_watch_path, RecursiveMode::Recursive)
             .expect("Could not watch fragment shader");
 
         let vertex_data = [
@@ -423,7 +432,7 @@ impl midgar::App for App {
                   ui_data.date.day() as f32,
                   ui_data.date.num_seconds_from_midnight() as f32);
 
-        App {
+        Self {
             vs_path: vs_path.into(),
             fs_path: fs_path.into(),
             watcher,
@@ -470,12 +479,12 @@ impl midgar::App for App {
                 eprintln!("Got file event: {:?}", &event);
                 match event {
                     DebouncedEvent::Write(path) | DebouncedEvent::Create(path) => {
-                        if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
+                        if path == self.vs_path || path == self.fs_path {
                             ret = true;
                         }
                     },
                     DebouncedEvent::Remove(path) => {
-                        if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
+                        if path == self.vs_path || path == self.fs_path {
                             eprintln!("In-use shader \"{}\" removed! Exiting...", path.display());
                             midgar.set_should_exit();
                             return;
@@ -488,10 +497,15 @@ impl midgar::App for App {
         };
 
         if recompile_shaders {
-            // TODO: Any way to recompile shaders in the background?
             eprint!("Recompiling shaders... ");
-            // TODO: Re-enable this!
-            //self.program = compile_shader(midgar.graphics().display(), &self.vs_path, &self.fs_path));
+            let shadertoy = if let UniformValues::Shadertoy(_) = self.uniform_values {
+                true
+            } else {
+                false
+            };
+            let (program, uniform_values) = create_program(midgar.graphics().display(), &self.vs_path, &self.fs_path, shadertoy);
+            self.program = program;
+            self.uniform_values = uniform_values;
             eprintln!("Done!");
         }
 
