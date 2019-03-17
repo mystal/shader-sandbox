@@ -23,23 +23,93 @@ struct Vertex {
 }
 glium::implement_vertex!(Vertex, vertex);
 
-struct UniformHolder {
-    value: Box<dyn AsUniformValue>,
-    ty: UniformType,
-    resolution: bool,
+#[derive(Clone, Debug)]
+enum StormUniform {
+    // User set types.
+    Float(f32),
+    FloatVec2([f32; 2]),
+    FloatVec3([f32; 3]),
+    FloatVec4([f32; 4]),
+    Double(f64),
+    DoubleVec2([f64; 2]),
+    DoubleVec3([f64; 3]),
+    DoubleVec4([f64; 4]),
+    Int(i32),
+    IntVec2([i32; 2]),
+    IntVec3([i32; 3]),
+    IntVec4([i32; 4]),
+    UnsignedInt(u32),
+    UnsignedIntVec2([u32; 2]),
+    UnsignedIntVec3([u32; 3]),
+    UnsignedIntVec4([u32; 4]),
+    Int64(i64),
+    Int64Vec2([i64; 2]),
+    Int64Vec3([i64; 3]),
+    Int64Vec4([i64; 4]),
+    UnsignedInt64(u64),
+    UnsignedInt64Vec2([u64; 2]),
+    UnsignedInt64Vec3([u64; 3]),
+    UnsignedInt64Vec4([u64; 4]),
+    Bool(bool),
+    BoolVec2([bool; 2]),
+    BoolVec3([bool; 3]),
+    BoolVec4([bool; 4]),
+
+    // Standard types.
+    Resolution([f32; 2]),
 }
 
-impl UniformHolder {
-    fn new(value: Box<dyn AsUniformValue>, ty: UniformType) -> Self {
-        Self {
-            value,
-            ty,
-            resolution: false,
+impl AsUniformValue for StormUniform {
+    fn as_uniform_value(&self) -> UniformValue {
+        use StormUniform::*;
+        match self {
+            Float(v) => v.as_uniform_value(),
+            FloatVec2(v) => v.as_uniform_value(),
+            FloatVec3(v) => v.as_uniform_value(),
+            FloatVec4(v) => v.as_uniform_value(),
+            Double(v) => v.as_uniform_value(),
+            DoubleVec2(v) => v.as_uniform_value(),
+            DoubleVec3(v) => v.as_uniform_value(),
+            DoubleVec4(v) => v.as_uniform_value(),
+            Int(v) => v.as_uniform_value(),
+            IntVec2(v) => v.as_uniform_value(),
+            IntVec3(v) => v.as_uniform_value(),
+            IntVec4(v) => v.as_uniform_value(),
+            UnsignedInt(v) => v.as_uniform_value(),
+            UnsignedIntVec2(v) => v.as_uniform_value(),
+            UnsignedIntVec3(v) => v.as_uniform_value(),
+            UnsignedIntVec4(v) => v.as_uniform_value(),
+            Int64(v) => v.as_uniform_value(),
+            Int64Vec2(v) => v.as_uniform_value(),
+            Int64Vec3(v) => v.as_uniform_value(),
+            Int64Vec4(v) => v.as_uniform_value(),
+            UnsignedInt64(v) => v.as_uniform_value(),
+            UnsignedInt64Vec2(v) => v.as_uniform_value(),
+            UnsignedInt64Vec3(v) => v.as_uniform_value(),
+            UnsignedInt64Vec4(v) => v.as_uniform_value(),
+            Bool(v) => v.as_uniform_value(),
+            BoolVec2(v) => v.as_uniform_value(),
+            BoolVec3(v) => v.as_uniform_value(),
+            BoolVec4(v) => v.as_uniform_value(),
+            Resolution(v) => v.as_uniform_value(),
         }
     }
 }
 
-// TODO: Consider making an enum for the uniform values.
+#[derive(Debug)]
+struct UniformHolder {
+    value: StormUniform,
+}
+
+impl UniformHolder {
+    fn new(value: StormUniform) -> Self {
+        Self {
+            value,
+        }
+    }
+}
+
+#[derive(Debug)]
 struct FreeformUniforms {
     uniforms: HashMap<String, UniformHolder>,
 }
@@ -48,44 +118,44 @@ impl FreeformUniforms {
     fn new(program: &Program) -> Self {
         let mut uniforms = HashMap::new();
         for (name, uniform) in program.uniforms() {
-            use UniformType::*;
+            use StormUniform::*;
 
             // Check uniform type and set a default value for it.
-            let value: Box<dyn AsUniformValue> = match uniform.ty {
-                Float => Box::new(0.0f32),
-                FloatVec2 => Box::new([0.0f32; 2]),
-                FloatVec3 => Box::new([0.0f32; 3]),
-                FloatVec4 => Box::new([0.0f32; 4]),
-                Double => Box::new(0.0f64),
-                DoubleVec2 => Box::new([0.0f64; 2]),
-                DoubleVec3 => Box::new([0.0f64; 3]),
-                DoubleVec4 => Box::new([0.0f64; 4]),
-                Int => Box::new(0i32),
-                IntVec2 => Box::new([0i32; 2]),
-                IntVec3 => Box::new([0i32; 3]),
-                IntVec4 => Box::new([0i32; 4]),
-                UnsignedInt => Box::new(0u32),
-                UnsignedIntVec2 => Box::new([0u32; 2]),
-                UnsignedIntVec3 => Box::new([0u32; 3]),
-                UnsignedIntVec4 => Box::new([0u32; 4]),
-                Int64 => Box::new(0i64),
-                Int64Vec2 => Box::new([0i64; 2]),
-                Int64Vec3 => Box::new([0i64; 3]),
-                Int64Vec4 => Box::new([0i64; 4]),
-                UnsignedInt64 => Box::new(0u64),
-                UnsignedInt64Vec2 => Box::new([0u64; 2]),
-                UnsignedInt64Vec3 => Box::new([0u64; 3]),
-                UnsignedInt64Vec4 => Box::new([0u64; 4]),
-                Bool => Box::new(false),
-                BoolVec2 => Box::new([false; 2]),
-                BoolVec3 => Box::new([false; 3]),
-                BoolVec4 => Box::new([false; 4]),
+            let value = match uniform.ty {
+                UniformType::Float => Float(0.0f32),
+                UniformType::FloatVec2 => FloatVec2([0.0f32; 2]),
+                UniformType::FloatVec3 => FloatVec3([0.0f32; 3]),
+                UniformType::FloatVec4 => FloatVec4([0.0f32; 4]),
+                UniformType::Double => Double(0.0f64),
+                UniformType::DoubleVec2 => DoubleVec2([0.0f64; 2]),
+                UniformType::DoubleVec3 => DoubleVec3([0.0f64; 3]),
+                UniformType::DoubleVec4 => DoubleVec4([0.0f64; 4]),
+                UniformType::Int => Int(0i32),
+                UniformType::IntVec2 => IntVec2([0i32; 2]),
+                UniformType::IntVec3 => IntVec3([0i32; 3]),
+                UniformType::IntVec4 => IntVec4([0i32; 4]),
+                UniformType::UnsignedInt => UnsignedInt(0u32),
+                UniformType::UnsignedIntVec2 => UnsignedIntVec2([0u32; 2]),
+                UniformType::UnsignedIntVec3 => UnsignedIntVec3([0u32; 3]),
+                UniformType::UnsignedIntVec4 => UnsignedIntVec4([0u32; 4]),
+                UniformType::Int64 => Int64(0i64),
+                UniformType::Int64Vec2 => Int64Vec2([0i64; 2]),
+                UniformType::Int64Vec3 => Int64Vec3([0i64; 3]),
+                UniformType::Int64Vec4 => Int64Vec4([0i64; 4]),
+                UniformType::UnsignedInt64 => UnsignedInt64(0u64),
+                UniformType::UnsignedInt64Vec2 => UnsignedInt64Vec2([0u64; 2]),
+                UniformType::UnsignedInt64Vec3 => UnsignedInt64Vec3([0u64; 3]),
+                UniformType::UnsignedInt64Vec4 => UnsignedInt64Vec4([0u64; 4]),
+                UniformType::Bool => Bool(false),
+                UniformType::BoolVec2 => BoolVec2([false; 2]),
+                UniformType::BoolVec3 => BoolVec3([false; 3]),
+                UniformType::BoolVec4 => BoolVec4([false; 4]),
 
                 // TODO: Return a result instead of panicking.
                 ty => panic!("Uniforms of type {:?} are unimplemented!", ty),
             };
             eprintln!("{}: {:?}", name, uniform.ty);
-            uniforms.insert(name.clone(), UniformHolder::new(value, uniform.ty));
+            uniforms.insert(name.clone(), UniformHolder::new(value));
         }
         Self {
             uniforms,
@@ -290,12 +360,13 @@ impl midgar::App for App {
                         // TODO: Do stuff!
                         match value {
                             TomlValue::String(s) if s == "resolution" => {
-                                if uniform.ty == UniformType::FloatVec2 {
-                                    uniform.resolution = true;
+                                if let StormUniform::FloatVec2(_) = uniform.value {
+                                    uniform.value = StormUniform::Resolution([0.0; 2]);
                                 }
                             }
-                            TomlValue::Integer(i) => {
-                                if uniform.ty == UniformType::Int {
+                            TomlValue::Integer(toml_int) => {
+                                if let StormUniform::Int(uniform_int) = &mut uniform.value {
+                                    *uniform_int = *toml_int as i32;
                                 }
                             }
                             //TomlValue::Float(f) => {}
@@ -306,6 +377,8 @@ impl midgar::App for App {
                     }
                 }
             }
+
+            eprintln!("Uniforms:\n{:?}", uniform_values);
 
             (program, UniformValues::Freeform(uniform_values))
         };
@@ -396,7 +469,7 @@ impl midgar::App for App {
             while let Ok(event) = self.notify_rx.try_recv() {
                 eprintln!("Got file event: {:?}", &event);
                 match event {
-                    DebouncedEvent::NoticeWrite(path) | DebouncedEvent::Write(path) | DebouncedEvent::Create(path) => {
+                    DebouncedEvent::Write(path) | DebouncedEvent::Create(path) => {
                         if is_same_file(&path, &self.vs_path).unwrap() || is_same_file(&path, &self.fs_path).unwrap() {
                             ret = true;
                         }
@@ -426,21 +499,33 @@ impl midgar::App for App {
             return;
         }
 
+        // Update uniform values.
         self.ui_data.date = Local::now();
         let screen_size = midgar.graphics().screen_size();
-        if let UniformValues::Shadertoy(uniform_values) = &mut self.uniform_values {
-            uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
-            uniform_values.time_delta = midgar.time().delta_time() as f32;
-            //self.ui_data.global_time += self.uniform_values.time_delta;
-            uniform_values.time += uniform_values.time_delta;
-            uniform_values.frame += 1;
-            uniform_values.frame_rate = self.fps_counter.tick() as f32;
-            uniform_values.date = [
-                self.ui_data.date.year() as f32,
-                self.ui_data.date.month0() as f32,
-                self.ui_data.date.day0() as f32,
-                self.ui_data.date.num_seconds_from_midnight() as f32,
-            ];
+        match &mut self.uniform_values {
+            UniformValues::Freeform(uniform_values) => {
+                for uniform in uniform_values.uniforms.values_mut() {
+                    match &mut uniform.value {
+                        StormUniform::Resolution(v) =>
+                            *v = [screen_size.0 as f32, screen_size.1 as f32],
+                        _ => {}
+                    }
+                }
+            }
+            UniformValues::Shadertoy(uniform_values) => {
+                uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
+                uniform_values.time_delta = midgar.time().delta_time() as f32;
+                //self.ui_data.global_time += self.uniform_values.time_delta;
+                uniform_values.time += uniform_values.time_delta;
+                uniform_values.frame += 1;
+                uniform_values.frame_rate = self.fps_counter.tick() as f32;
+                uniform_values.date = [
+                    self.ui_data.date.year() as f32,
+                    self.ui_data.date.month0() as f32,
+                    self.ui_data.date.day0() as f32,
+                    self.ui_data.date.num_seconds_from_midnight() as f32,
+                ];
+            }
         }
 
         // Render everything!
