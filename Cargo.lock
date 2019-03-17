@@ -387,6 +387,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgui"
+version = "0.0.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "imgui-sys 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "imgui-glium-renderer"
+version = "0.0.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "glium 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "imgui 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "imgui-sys 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "imgui-sdl2"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "imgui 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sdl2 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "imgui-sys"
+version = "0.0.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cc 1.0.30 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glium 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.50 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "inflate"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,7 +568,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "midgar"
 version = "0.1.0"
-source = "git+https://github.com/mystal/midgar-engine?branch=dev#3dac1b7b5e1ed11a31d4dab522a9e2ffe93d1d10"
+source = "git+https://github.com/mystal/midgar-engine?branch=input_events#1625dae3fced2dab85e1778e0eccce0dc024dc64"
 dependencies = [
  "glium 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glium_sdl2 0.15.0 (git+https://github.com/mystal/glium-sdl2?branch=dev)",
@@ -990,7 +1028,10 @@ dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fps_counter 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glium 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "midgar 0.1.0 (git+https://github.com/mystal/midgar-engine?branch=dev)",
+ "imgui 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "imgui-glium-renderer 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "imgui-sdl2 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "midgar 0.1.0 (git+https://github.com/mystal/midgar-engine?branch=input_events)",
  "notify 4.0.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1223,6 +1264,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum glyph_brush_layout 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "d516ee098e2f7f9010020f20c85ebf980ae782aabe08221759f6078cf0ce75e8"
 "checksum hashbrown 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "3bae29b6653b3412c2e71e9d486db9f9df5d701941d86683005efb9f2d28e3da"
 "checksum image 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)" = "52fb0666a1273dac46f9725aa4859bcd5595fc3554cf3495051b4de8db745e7d"
+"checksum imgui 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)" = "ad121d9fd06452a86fe5fe4301c7d388a5193e3999fd7b21124e584a616e61b0"
+"checksum imgui-glium-renderer 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)" = "4149abc6063d250f1cf5a52a66ebf895d67e24407ebe9fc3d7ab0849ff8d492f"
+"checksum imgui-sdl2 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2cdc2bb71a6cef03539cde8002a41bfc302cae8fe59266c9f4a969a1ac1a66e9"
+"checksum imgui-sys 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)" = "ccc3dab84744a8a4ce208332f71ce8705d824bc1c4ac2d2bca59a5705d415835"
 "checksum inflate 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "1cdb29978cc5797bd8dcc8e5bf7de604891df2a8dc576973d71a281e916db2ff"
 "checksum inotify 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "40b54539f3910d6f84fbf9a643efd6e3aa6e4f001426c0329576128255994718"
 "checksum inotify-sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "e74a1aa87c59aeff6ef2cc2fa62d41bc43f54952f55652656b18a02fd5e356c0"
@@ -1243,7 +1288,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum matrixmultiply 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dcfed72d871629daa12b25af198f110e8095d7650f5f4c61c5bac28364604f9b"
 "checksum maybe-owned 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "006ac35c23dc00cd88083b27297224aedc893d628aff7374352b4f3d57315fa9"
 "checksum memoffset 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0f9dc261e2b62d7a622bf416ea3c5245cdd5d9a7fcc428c0d06804dfce1775b3"
-"checksum midgar 0.1.0 (git+https://github.com/mystal/midgar-engine?branch=dev)" = "<none>"
+"checksum midgar 0.1.0 (git+https://github.com/mystal/midgar-engine?branch=input_events)" = "<none>"
 "checksum mio 0.6.16 (registry+https://github.com/rust-lang/crates.io-index)" = "71646331f2619b1026cc302f87a2b8b648d5c6dd6937846a16cc8ce0f347f432"
 "checksum mio-extras 2.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "46e73a04c2fa6250b8d802134d56d554a9ec2922bf977777c805ea5def61ce40"
 "checksum miow 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f2f3b1cf331de6896aabf6e9d55dca90356cc9960cca7eaaf408a355ae919"

@@ -9,7 +9,10 @@ use chrono::*;
 use fps_counter::FPSCounter;
 use glium::Program;
 use glium::backend::Facade;
-use glium::uniforms::{AsUniformValue, Uniforms, UniformType, UniformValue};
+use glium::uniforms::{AsUniformValue, Uniforms as GliumUniforms, UniformType, UniformValue};
+use imgui::ImGui;
+use imgui_glium_renderer::Renderer as ImGuiRenderer;
+use imgui_sdl2::ImguiSdl2;
 use midgar::{KeyCode, Midgar, MouseButton, Surface};
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use toml::Value as TomlValue;
@@ -162,7 +165,7 @@ impl FreeformUniforms {
     }
 }
 
-impl Uniforms for FreeformUniforms {
+impl GliumUniforms for FreeformUniforms {
     fn visit_values<'uniform, F>(&'uniform self, mut output: F)
         where F: FnMut(&str, UniformValue<'uniform>) {
         for (name, holder) in &self.uniforms {
@@ -215,7 +218,7 @@ impl ShadertoyUniforms {
     }
 }
 
-impl Uniforms for ShadertoyUniforms {
+impl GliumUniforms for ShadertoyUniforms {
     fn visit_values<'uniform, F>(&'uniform self, mut output: F)
         where F: FnMut(&str, UniformValue<'uniform>) {
             output("iResolution", self.resolution.as_uniform_value());
@@ -234,17 +237,17 @@ impl Uniforms for ShadertoyUniforms {
     }
 }
 
-enum UniformValues {
+enum Uniforms {
     Freeform(FreeformUniforms),
     Shadertoy(ShadertoyUniforms),
 }
 
-impl Uniforms for UniformValues {
+impl GliumUniforms for Uniforms {
     fn visit_values<'uniform, F>(&'uniform self, output: F)
         where F: FnMut(&str, UniformValue<'uniform>) {
             match self {
-                UniformValues::Freeform(uniforms) => uniforms.visit_values(output),
-                UniformValues::Shadertoy(uniforms) => uniforms.visit_values(output),
+                Uniforms::Freeform(uniforms) => uniforms.visit_values(output),
+                Uniforms::Shadertoy(uniforms) => uniforms.visit_values(output),
             }
     }
 }
@@ -284,7 +287,7 @@ fn compile_shader<F>(display: &F, vs_src: &str, fs_src: &str) -> Program
     //).expect("Could not compile or link shader program")
 }
 
-fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) -> (Program, UniformValues)
+fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) -> (Program, Uniforms)
     where F: Facade, P: AsRef<Path> {
     let vs_src = fs::read_to_string(&vs_path)
         .expect("Could not open vertex shader file");
@@ -311,8 +314,8 @@ fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) 
 
         let program = compile_shader(display, &vs_src, &fs_src);
 
-        let uniform_values = ShadertoyUniforms::new();
-        (program, UniformValues::Shadertoy(uniform_values))
+        let uniforms = ShadertoyUniforms::new();
+        (program, Uniforms::Shadertoy(uniforms))
     } else {
         let mut split_fs_src = fs_src.split("+++\n");
         // Value before the TOML block.
@@ -327,11 +330,11 @@ fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) 
         let fs_src = split_fs_src.next()
             .expect("Did not find GLSL fragment shader source after TOML block");
         let program = compile_shader(display, &vs_src, &fs_src);
-        let mut uniform_values = FreeformUniforms::new(&program);
+        let mut uniforms = FreeformUniforms::new(&program);
 
         if let TomlValue::Table(table) = parsed_toml {
             for (key, value) in &table {
-                if let Some(uniform) = uniform_values.uniforms.get_mut(key) {
+                if let Some(uniform) = uniforms.uniforms.get_mut(key) {
                     // TODO: Do stuff!
                     match value {
                         TomlValue::String(s) if s == "resolution" => {
@@ -353,27 +356,32 @@ fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) 
             }
         }
 
-        eprintln!("Uniforms:\n{:?}", uniform_values);
+        eprintln!("Uniforms:\n{:?}", uniforms);
 
-        (program, UniformValues::Freeform(uniform_values))
+        (program, Uniforms::Freeform(uniforms))
     }
 }
 
-struct App {
+struct AppState {
     vs_path: PathBuf,
     fs_path: PathBuf,
     watcher: RecommendedWatcher,
     notify_rx: Receiver<DebouncedEvent>,
+
     program: glium::Program,
-    // TODO: Make this Uniforms
-    uniform_values: UniformValues,
+    uniforms: Uniforms,
     vertex_buffer: glium::VertexBuffer<Vertex>,
     index_buffer: glium::IndexBuffer<u8>,
+
     ui_data: UiData,
     fps_counter: FPSCounter,
+
+    imgui: ImGui,
+    ui_input_handler: ImguiSdl2,
+    ui_renderer: ImGuiRenderer,
 }
 
-impl midgar::App for App {
+impl midgar::App for AppState {
     fn new(midgar: &Midgar) -> Self {
         let args = clap::App::new("Shade Storm")
             .args_from_usage(
@@ -386,7 +394,7 @@ impl midgar::App for App {
         let fs_path = fs::canonicalize(args.value_of("shader_file")
             .expect("Did not get a shader_file"))
             .expect("Could not canonicalize fragment shader path");
-        let (program, uniform_values) = create_program(midgar.graphics().display(), &vs_path, &fs_path, args.is_present("shadertoy"));
+        let (program, uniforms) = create_program(midgar.graphics().display(), &vs_path, &fs_path, args.is_present("shadertoy"));
 
         // Use notify to watch for changes in the shaders.
         let (notify_tx, notify_rx) = mpsc::channel();
@@ -432,17 +440,26 @@ impl midgar::App for App {
                   ui_data.date.day() as f32,
                   ui_data.date.num_seconds_from_midnight() as f32);
 
+        let mut imgui = ImGui::init();
+        let ui_input_handler = ImguiSdl2::new(&mut imgui);
+        let ui_renderer = ImGuiRenderer::init(&mut imgui, midgar.graphics().display())
+            .expect("Could not create ImGui Renderer");
+
         Self {
             vs_path: vs_path.into(),
             fs_path: fs_path.into(),
             watcher,
             notify_rx,
             program,
-            uniform_values,
+            uniforms,
             vertex_buffer,
             index_buffer,
             ui_data,
             fps_counter: FPSCounter::new(),
+
+            imgui,
+            ui_input_handler,
+            ui_renderer,
         }
     }
 
@@ -460,15 +477,15 @@ impl midgar::App for App {
 
         let (x, y) = midgar.input().mouse_pos();
 
-        if let UniformValues::Shadertoy(uniform_values) = &mut self.uniform_values {
+        if let Uniforms::Shadertoy(uniforms) = &mut self.uniforms {
             if midgar.input().was_button_pressed(MouseButton::Left) {
-                uniform_values.mouse[2] = x as f32;
-                uniform_values.mouse[3] = y as f32;
+                uniforms.mouse[2] = x as f32;
+                uniforms.mouse[3] = y as f32;
             }
 
             if midgar.input().is_button_held(MouseButton::Left) {
-                uniform_values.mouse[0] = x as f32;
-                uniform_values.mouse[1] = y as f32;
+                uniforms.mouse[0] = x as f32;
+                uniforms.mouse[1] = y as f32;
             }
         }
 
@@ -498,14 +515,14 @@ impl midgar::App for App {
 
         if recompile_shaders {
             eprint!("Recompiling shaders... ");
-            let shadertoy = if let UniformValues::Shadertoy(_) = self.uniform_values {
+            let shadertoy = if let Uniforms::Shadertoy(_) = self.uniforms {
                 true
             } else {
                 false
             };
-            let (program, uniform_values) = create_program(midgar.graphics().display(), &self.vs_path, &self.fs_path, shadertoy);
+            let (program, uniforms) = create_program(midgar.graphics().display(), &self.vs_path, &self.fs_path, shadertoy);
             self.program = program;
-            self.uniform_values = uniform_values;
+            self.uniforms = uniforms;
             eprintln!("Done!");
         }
 
@@ -516,9 +533,9 @@ impl midgar::App for App {
         // Update uniform values.
         self.ui_data.date = Local::now();
         let screen_size = midgar.graphics().screen_size();
-        match &mut self.uniform_values {
-            UniformValues::Freeform(uniform_values) => {
-                for uniform in uniform_values.uniforms.values_mut() {
+        match &mut self.uniforms {
+            Uniforms::Freeform(uniforms) => {
+                for uniform in uniforms.uniforms.values_mut() {
                     match &mut uniform.value {
                         StormUniform::Resolution(v) =>
                             *v = [screen_size.0 as f32, screen_size.1 as f32],
@@ -526,14 +543,14 @@ impl midgar::App for App {
                     }
                 }
             }
-            UniformValues::Shadertoy(uniform_values) => {
-                uniform_values.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
-                uniform_values.time_delta = midgar.time().delta_time() as f32;
-                //self.ui_data.global_time += self.uniform_values.time_delta;
-                uniform_values.time += uniform_values.time_delta;
-                uniform_values.frame += 1;
-                uniform_values.frame_rate = self.fps_counter.tick() as f32;
-                uniform_values.date = [
+            Uniforms::Shadertoy(uniforms) => {
+                uniforms.resolution = [screen_size.0 as f32, screen_size.1 as f32, 1.0];
+                uniforms.time_delta = midgar.time().delta_time() as f32;
+                //self.ui_data.global_time += self.uniforms.time_delta;
+                uniforms.time += uniforms.time_delta;
+                uniforms.frame += 1;
+                uniforms.frame_rate = self.fps_counter.tick() as f32;
+                uniforms.date = [
                     self.ui_data.date.year() as f32,
                     self.ui_data.date.month0() as f32,
                     self.ui_data.date.day0() as f32,
@@ -554,12 +571,12 @@ impl midgar::App for App {
                 &self.vertex_buffer,
                 &self.index_buffer,
                 &self.program,
-                &self.uniform_values,
+                &self.uniforms,
                 &Default::default(),
             ).expect("Could not draw to screen");
 
-            if let UniformValues::Shadertoy(uniform_values) = &mut self.uniform_values {
-                self.ui_data.fps = uniform_values.frame_rate;
+            if let Uniforms::Shadertoy(uniforms) = &mut self.uniforms {
+                self.ui_data.fps = uniforms.frame_rate;
             }
 
             // TODO: Draw UI.
@@ -575,6 +592,6 @@ fn main() {
         .with_title("Shade Storm")
         .with_screen_size(SCREEN_SIZE)
         .with_resizable(true);
-    let app: midgar::MidgarApp<App> = midgar::MidgarApp::new(config);
+    let app: midgar::MidgarApp<AppState> = midgar::MidgarApp::new(config);
     app.run();
 }
