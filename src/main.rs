@@ -10,10 +10,10 @@ use fps_counter::FPSCounter;
 use glium::Program;
 use glium::backend::Facade;
 use glium::uniforms::{AsUniformValue, Uniforms as GliumUniforms, UniformType, UniformValue};
-use imgui::ImGui;
+use imgui::*;
 use imgui_glium_renderer::Renderer as ImGuiRenderer;
 use imgui_sdl2::ImguiSdl2;
-use midgar::{KeyCode, Midgar, MouseButton, Surface};
+use midgar::{Event, KeyCode, Midgar, MouseButton, Surface};
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use toml::Value as TomlValue;
 
@@ -463,16 +463,39 @@ impl midgar::App for AppState {
         }
     }
 
-    fn step(&mut self, midgar: &mut Midgar) {
-        if midgar.input().was_key_pressed(KeyCode::Escape) {
+    fn event(&mut self, event: &Event, midgar: &mut Midgar) {
+        // Send event to imgui.
+        self.ui_input_handler.handle_event(&mut self.imgui, event);
+        if self.ui_input_handler.ignore_event(event) {
+            return;
+        }
+
+        // imgui didn't handle the event, so we should!
+        if let Event::KeyDown { keycode: Some(KeyCode::Escape), ..} = event {
             midgar.set_should_exit();
             return;
         }
 
-        if midgar.input().was_key_pressed(KeyCode::Space) {
+        if let Event::KeyDown { keycode: Some(KeyCode::Space), ..} = event {
             self.ui_data.play = !self.ui_data.play;
         }
 
+        // Handle other global events.
+        match *event {
+            Event::MouseButtonDown { mouse_btn: MouseButton::Left, x, y, .. } => {
+            }
+            Event::MouseButtonUp { mouse_btn: MouseButton::Left, .. } => {
+            }
+            Event::MouseMotion { x, y, .. } => {
+            }
+            Event::MouseWheel { y: 0, .. } => {}
+            Event::MouseWheel { y, direction, .. } => {
+            }
+            _ => {}
+        }
+    }
+
+    fn step(&mut self, midgar: &mut Midgar) {
         self.ui_data.mouse_button_held = midgar.input().is_button_held(MouseButton::Left);
 
         let (x, y) = midgar.input().mouse_pos();
@@ -559,6 +582,20 @@ impl midgar::App for AppState {
             }
         }
 
+        // TODO: Update UI.
+        let imgui = &mut self.imgui;
+        let ui = self.ui_input_handler.frame(
+            midgar.graphics().display().window(),
+            imgui,
+            &midgar.input().mouse_state());
+
+        // TODO: Show a window docked to the side with options for the shader.
+        // Window for selected LSystemView.
+        ui.window(im_str!("Shader Options"))
+            .size((300.0, 100.0), ImGuiCond::FirstUseEver)
+            .build(|| {
+            });
+
         // Render everything!
         {
             let mut target = midgar.graphics().display().draw();
@@ -575,11 +612,14 @@ impl midgar::App for AppState {
                 &Default::default(),
             ).expect("Could not draw to screen");
 
+            // Draw the UI.
+            self.ui_renderer.render(&mut target, ui)
+                .expect("Could not render UI");
+
+            // TODO: Move this somewhere earlier?
             if let Uniforms::Shadertoy(uniforms) = &mut self.uniforms {
                 self.ui_data.fps = uniforms.frame_rate;
             }
-
-            // TODO: Draw UI.
 
             target.finish()
                 .expect("target.finish() failed");
