@@ -17,7 +17,7 @@ use midgar::{Event, KeyCode, Midgar, MouseButton, Surface};
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use toml::Value as TomlValue;
 
-const SCREEN_SIZE: (u32, u32) = (640, 480);
+const SCREEN_SIZE: (u32, u32) = (1024, 768);
 
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -117,6 +117,7 @@ impl UniformHolder {
 
 #[derive(Debug)]
 struct FreeformUniforms {
+    // TODO: Use an ordered hash map? To display uniforms in order.
     uniforms: HashMap<String, UniformHolder>,
 }
 
@@ -346,11 +347,15 @@ fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) 
                                 uniform.value = StormUniform::ColorRgb([1.0; 3]);
                             } else if let StormUniform::FloatVec4(_) = uniform.value {
                                 uniform.value = StormUniform::ColorRgba([1.0; 4]);
+                            } else {
+                                // TODO: Print an error!
                             }
                         }
                         TomlValue::String(s) if s == "resolution" => {
                             if let StormUniform::FloatVec2(_) = uniform.value {
                                 uniform.value = StormUniform::Resolution([0.0; 2]);
+                            } else {
+                                // TODO: Print an error!
                             }
                         }
                         TomlValue::Integer(toml_int) => {
@@ -615,13 +620,11 @@ impl midgar::App for AppState {
                                     .build();
                             }
                             StormUniform::ColorRgb(c) => {
-                                // TODO: Hide this in a dropdown?
-                                ui.color_picker(im_str!("{}", k), c)
+                                ui.color_edit(im_str!("{}", k), c)
                                     .build();
                             }
                             StormUniform::ColorRgba(c) => {
-                                // TODO: Hide this in a dropdown?
-                                ui.color_picker(im_str!("{}", k), c)
+                                ui.color_edit(im_str!("{}", k), c)
                                     .build();
                             }
                             _ => {}
