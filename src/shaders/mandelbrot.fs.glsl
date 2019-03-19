@@ -1,10 +1,12 @@
 +++
 resolution = "resolution"
+color = "color"
 iterations = 50
 #iterations = { widget = "slider", min = 1 }
 +++
 
 uniform vec2 resolution;
+uniform vec3 color;
 uniform int iterations;
 
 bool mandelbrotConverges(vec2 z) {
@@ -30,7 +32,7 @@ void main() {
     c.x *= resolution.x / resolution.y;
     c.x -= 0.5;
     if (mandelbrot(c)) {
-        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        gl_FragColor = vec4(color, 1.0);
     } else {
         gl_FragColor = vec4(0.0);
     }

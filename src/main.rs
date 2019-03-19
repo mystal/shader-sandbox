@@ -58,6 +58,8 @@ enum StormUniform {
     BoolVec4([bool; 4]),
 
     // Standard types.
+    ColorRgb([f32; 3]),
+    ColorRgba([f32; 4]),
     Resolution([f32; 2]),
 }
 
@@ -93,6 +95,8 @@ impl AsUniformValue for StormUniform {
             BoolVec2(v) => v.as_uniform_value(),
             BoolVec3(v) => v.as_uniform_value(),
             BoolVec4(v) => v.as_uniform_value(),
+            ColorRgb(v) => v.as_uniform_value(),
+            ColorRgba(v) => v.as_uniform_value(),
             Resolution(v) => v.as_uniform_value(),
         }
     }
@@ -337,6 +341,13 @@ fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) 
                 if let Some(uniform) = uniforms.uniforms.get_mut(key) {
                     // TODO: Do stuff!
                     match value {
+                        TomlValue::String(s) if s == "color" => {
+                            if let StormUniform::FloatVec3(_) = uniform.value {
+                                uniform.value = StormUniform::ColorRgb([1.0; 3]);
+                            } else if let StormUniform::FloatVec4(_) = uniform.value {
+                                uniform.value = StormUniform::ColorRgba([1.0; 4]);
+                            }
+                        }
                         TomlValue::String(s) if s == "resolution" => {
                             if let StormUniform::FloatVec2(_) = uniform.value {
                                 uniform.value = StormUniform::Resolution([0.0; 2]);
@@ -582,18 +593,41 @@ impl midgar::App for AppState {
             }
         }
 
-        // TODO: Update UI.
+        // Update UI.
         let imgui = &mut self.imgui;
         let ui = self.ui_input_handler.frame(
             midgar.graphics().display().window(),
             imgui,
             &midgar.input().mouse_state());
 
-        // TODO: Show a window docked to the side with options for the shader.
-        // Window for selected LSystemView.
+        // Show a window with options for the shader.
+        // TODO: Can we dock the window to a side?
+        let uniforms = &mut self.uniforms;
         ui.window(im_str!("Shader Options"))
             .size((300.0, 100.0), ImGuiCond::FirstUseEver)
             .build(|| {
+                if let Uniforms::Freeform(uniforms) = uniforms {
+                    for (k, v) in &mut uniforms.uniforms {
+                        // Create a widget to modify the uniform.
+                        match &mut v.value {
+                            StormUniform::Int(i) => {
+                                ui.slider_int(im_str!("{}", k), i, 0, 500)
+                                    .build();
+                            }
+                            StormUniform::ColorRgb(c) => {
+                                // TODO: Hide this in a dropdown?
+                                ui.color_picker(im_str!("{}", k), c)
+                                    .build();
+                            }
+                            StormUniform::ColorRgba(c) => {
+                                // TODO: Hide this in a dropdown?
+                                ui.color_picker(im_str!("{}", k), c)
+                                    .build();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             });
 
         // Render everything!
