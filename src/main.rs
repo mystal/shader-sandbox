@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -104,12 +103,14 @@ impl AsUniformValue for StormUniform {
 
 #[derive(Debug)]
 struct UniformHolder {
+    name: String,
     value: StormUniform,
 }
 
 impl UniformHolder {
-    fn new(value: StormUniform) -> Self {
+    fn new(name: String, value: StormUniform) -> Self {
         Self {
+            name,
             value,
         }
     }
@@ -117,13 +118,12 @@ impl UniformHolder {
 
 #[derive(Debug)]
 struct FreeformUniforms {
-    // TODO: Use an ordered hash map? To display uniforms in order.
-    uniforms: HashMap<String, UniformHolder>,
+    uniforms: Vec<UniformHolder>,
 }
 
 impl FreeformUniforms {
     fn new(program: &Program) -> Self {
-        let mut uniforms = HashMap::new();
+        let mut uniforms = Vec::new();
         for (name, uniform) in program.uniforms() {
             use StormUniform::*;
 
@@ -162,8 +162,9 @@ impl FreeformUniforms {
                 ty => panic!("Uniforms of type {:?} are unimplemented!", ty),
             };
             eprintln!("{}: {:?}", name, uniform.ty);
-            uniforms.insert(name.clone(), UniformHolder::new(value));
+            uniforms.push(UniformHolder::new(name.clone(), value));
         }
+        // TODO: Sort uniforms by name?
         Self {
             uniforms,
         }
@@ -173,8 +174,8 @@ impl FreeformUniforms {
 impl GliumUniforms for FreeformUniforms {
     fn visit_values<'uniform, F>(&'uniform self, mut output: F)
         where F: FnMut(&str, UniformValue<'uniform>) {
-        for (name, holder) in &self.uniforms {
-            output(name, holder.value.as_uniform_value());
+        for holder in &self.uniforms {
+            output(&holder.name, holder.value.as_uniform_value());
         }
     }
 }
@@ -339,7 +340,7 @@ fn create_program<F, P>(display: &F, vs_path: &P, fs_path: &P, shadertoy: bool) 
 
         if let TomlValue::Table(table) = parsed_toml {
             for (key, value) in &table {
-                if let Some(uniform) = uniforms.uniforms.get_mut(key) {
+                if let Some(uniform) = uniforms.uniforms.iter_mut().find(|h| &h.name == key) {
                     // TODO: Do stuff!
                     match value {
                         TomlValue::String(s) if s == "color" => {
@@ -574,8 +575,8 @@ impl midgar::App for AppState {
         let screen_size = midgar.graphics().screen_size();
         match &mut self.uniforms {
             Uniforms::Freeform(uniforms) => {
-                for uniform in uniforms.uniforms.values_mut() {
-                    match &mut uniform.value {
+                for holder in &mut uniforms.uniforms {
+                    match &mut holder.value {
                         StormUniform::Resolution(v) =>
                             *v = [screen_size.0 as f32, screen_size.1 as f32],
                         _ => {}
@@ -612,19 +613,19 @@ impl midgar::App for AppState {
             .size((300.0, 100.0), ImGuiCond::FirstUseEver)
             .build(|| {
                 if let Uniforms::Freeform(uniforms) = uniforms {
-                    for (k, v) in &mut uniforms.uniforms {
+                    for holder in &mut uniforms.uniforms {
                         // Create a widget to modify the uniform.
-                        match &mut v.value {
+                        match &mut holder.value {
                             StormUniform::Int(i) => {
-                                ui.slider_int(im_str!("{}", k), i, 0, 500)
+                                ui.slider_int(im_str!("{}", &holder.name), i, 0, 500)
                                     .build();
                             }
                             StormUniform::ColorRgb(c) => {
-                                ui.color_edit(im_str!("{}", k), c)
+                                ui.color_edit(im_str!("{}", &holder.name), c)
                                     .build();
                             }
                             StormUniform::ColorRgba(c) => {
-                                ui.color_edit(im_str!("{}", k), c)
+                                ui.color_edit(im_str!("{}", &holder.name), c)
                                     .build();
                             }
                             _ => {}
