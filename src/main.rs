@@ -406,7 +406,7 @@ impl midgar::App for AppState {
                 <shader_file> 'The shader to run.'")
             .get_matches();
 
-        let vs_path = fs::canonicalize("src/shaders/simple.vs.glsl")
+        let vs_path = fs::canonicalize("src/shaders/simple.vert")
             .expect("Could not canonicalize vertex shader path");
         let fs_path = fs::canonicalize(args.value_of("shader_file")
             .expect("Did not get a shader_file"))
